@@ -1,0 +1,94 @@
+.container {
+    min-height: 100vh;
+    background: var(--bg-dark);
+    color: white;
+    padding: 2rem;
+    font-family: var(--font-mono);
+}
+
+.loginContainer {
+    max-width: 400px;
+    margin: 100px auto;
+    text-align: center;
+    padding: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.dashboardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.projectsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.projectCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.2s;
+}
+
+.projectCard:hover {
+    border-color: var(--accent1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.projectName {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: white;
+}
+
+.projectUrl {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+    display: block;
+}
+
+.statusReview {
+    color: var(--accent2);
+}
+
+.statusApproved {
+    color: #4ade80;
+}
+
+.actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.createForm {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
