@@ -12,7 +12,7 @@ export default function FeedbackPage({ params }: { params: { token: string } }) 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    const apiBase = '/api';
 
     const fetchData = async (pageUrl: string = '/') => {
         try {

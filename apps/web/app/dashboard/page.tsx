@@ -29,7 +29,7 @@ export default function DashboardPage() {
     const fetchProjects = async (ownerEmail: string) => {
         setLoading(true);
         try {
-            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+            const apiBase = '/api';
             const res = await fetch(`${apiBase}/projects`, {
                 headers: { 'x-owner-email': ownerEmail }
             });
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     const handleGenerateLink = async (projectId: string) => {
         setCreatingLink(projectId);
         try {
-            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+            const apiBase = '/api';
             await fetch(`${apiBase}/projects/${projectId}/feedback-link`, {
                 method: 'POST',
                 headers: { 'x-owner-email': authEmail || '' }
@@ -70,7 +70,7 @@ export default function DashboardPage() {
             throw new Error("Owner email is missing");
         }
 
-        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+        const apiBase = '/api';
 
         const res = await fetch(`${apiBase}/projects`, {
             method: 'POST',

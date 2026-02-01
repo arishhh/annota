@@ -16,7 +16,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
     const [loading, setLoading] = useState(true);
     const [requesting, setRequesting] = useState(false);
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    const apiBase = '/api';
 
     useEffect(() => {
         const stored = localStorage.getItem('annota_owner_email');

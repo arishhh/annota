@@ -21,7 +21,7 @@ export default function ApprovalPage() {
     useEffect(() => {
         const fetchInfo = async () => {
             try {
-                const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+                const apiBase = '/api';
                 const res = await fetch(`${apiBase}/approval/${params.token}`);
                 if (res.ok) {
                     const data = await res.json();
@@ -68,7 +68,7 @@ export default function ApprovalPage() {
         setError('');
 
         try {
-            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+            const apiBase = '/api';
             const res = await fetch(`${apiBase}/approval/${params.token}/confirm`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
