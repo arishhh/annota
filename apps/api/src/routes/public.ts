@@ -121,6 +121,9 @@ router.post('/:token/comments', async (req: Request, res: Response) => {
         }
 
         // Validation
+        if (typeof pageUrl !== 'string' || !pageUrl.startsWith('/') || pageUrl.length > 500) {
+            return res.status(400).json({ error: 'Invalid pageUrl. Must be a path starting with /' });
+        }
         if (!Number.isInteger(clickX) || clickX < 0 || !Number.isInteger(clickY) || clickY < 0) {
             return res.status(400).json({ error: 'Coordinates must be non-negative integers' });
         }
@@ -160,8 +163,13 @@ router.get('/:token/comments', async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Link not found' });
         }
 
+        const whereClause: any = { projectId: link.projectId };
+        if (req.query.pageUrl) {
+            whereClause.pageUrl = String(req.query.pageUrl);
+        }
+
         const comments = await prisma.comment.findMany({
-            where: { projectId: link.projectId },
+            where: whereClause,
             orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
@@ -171,7 +179,6 @@ router.get('/:token/comments', async (req: Request, res: Response) => {
                 message: true,
                 status: true,
                 createdAt: true
-                // Exclude internal fields if any
             }
         });
 

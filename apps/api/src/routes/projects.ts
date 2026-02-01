@@ -64,6 +64,28 @@ router.get('/', async (req: Request, res: Response) => {
     }
 });
 
+// GET /projects/:id
+router.get('/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const user = req.user!;
+
+        const project = await prisma.project.findUnique({
+            where: { id },
+            include: { feedbackLink: true }
+        });
+
+        if (!project || project.ownerId !== user.id) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        res.json(project);
+    } catch (error) {
+        console.error('Get project failed:', error);
+        res.status(500).json({ error: 'Failed to fetch project' });
+    }
+});
+
 // POST /projects/:id/feedback-link
 router.post('/:id/feedback-link', async (req: Request, res: Response) => {
     try {

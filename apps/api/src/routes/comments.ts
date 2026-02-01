@@ -15,13 +15,19 @@ router.get('/projects/:projectId', async (req: Request, res: Response) => {
 
         // Verify ownership via nested query or explicit check.
         // Here we query comments where project.ownerId is user.id
+        const whereClause: any = {
+            projectId,
+            project: {
+                ownerId: user.id
+            }
+        };
+
+        if (req.query.pageUrl) {
+            whereClause.pageUrl = String(req.query.pageUrl);
+        }
+
         const comments = await prisma.comment.findMany({
-            where: {
-                projectId,
-                project: {
-                    ownerId: user.id
-                }
-            },
+            where: whereClause,
             orderBy: { createdAt: 'desc' },
         });
 

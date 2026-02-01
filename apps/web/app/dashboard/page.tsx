@@ -1,281 +1,212 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import styles from './page.module.css';
-
-type Project = {
-    id: string;
-    name: string;
-    baseUrl: string;
-    status: 'IN_REVIEW' | 'APPROVED';
-    createdAt: string;
-    feedbackLink: {
-        token: string;
-        isActive: boolean;
-    } | null;
-};
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import AppHeader from '../../components/AppHeader';
+import CreateProjectModal from '../../components/CreateProjectModal';
 
 export default function DashboardPage() {
-    const [email, setEmail] = useState('');
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-    const [projects, setProjects] = useState<Project[]>([]);
+    const router = useRouter();
+    const [authEmail, setAuthEmail] = useState<string | null>(null);
+    const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [creatingLink, setCreatingLink] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Create State
-    const [newName, setNewName] = useState('');
-    const [newUrl, setNewUrl] = useState('');
-
-    // Approval Modal State
-    const [approvalModal, setApprovalModal] = useState<{ open: boolean; projectId: string | null }>({ open: false, projectId: null });
-    const [clientEmail, setClientEmail] = useState('');
-    const [sendingApproval, setSendingApproval] = useState(false);
-
+    // 1. Auth Check (Client-side simple check)
     useEffect(() => {
-        const stored = localStorage.getItem('agency_email');
+        const stored = localStorage.getItem('annota_owner_email');
         if (stored) {
-            setEmail(stored);
-            setIsLoggedIn(true);
+            setAuthEmail(stored);
             fetchProjects(stored);
+        } else {
+            router.push('/login');
         }
-    }, []);
+    }, [router]);
 
-    const handleLogin = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (email) {
-            localStorage.setItem('agency_email', email);
-            setIsLoggedIn(true);
-            fetchProjects(email);
-        }
-    };
-
-    const fetchProjects = async (userEmail: string) => {
+    const fetchProjects = async (ownerEmail: string) => {
         setLoading(true);
         try {
             const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
             const res = await fetch(`${apiBase}/projects`, {
-                headers: { 'x-owner-email': userEmail }
+                headers: { 'x-owner-email': ownerEmail }
             });
             if (res.ok) {
                 setProjects(await res.json());
+            } else {
+                console.error('Failed to fetch projects');
             }
-        } catch (err) {
-            console.error(err);
+        } catch (e) {
+            console.error(e);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newName || !newUrl) return;
-
+    const handleGenerateLink = async (projectId: string) => {
+        setCreatingLink(projectId);
         try {
             const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
-            const res = await fetch(`${apiBase}/projects`, {
+            await fetch(`${apiBase}/projects/${projectId}/feedback-link`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-owner-email': email
-                },
-                body: JSON.stringify({ name: newName, baseUrl: newUrl })
+                headers: { 'x-owner-email': authEmail || '' }
             });
-
-            if (res.ok) {
-                const project = await res.json();
-                // Ensure link is created immediately for convenience
-                await fetch(`${apiBase}/projects/${project.id}/feedback-link`, {
-                    method: 'POST',
-                    headers: { 'x-owner-email': email }
-                });
-
-                setNewName('');
-                setNewUrl('');
-                fetchProjects(email);
-            } else {
-                alert('Failed to create project');
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const handleRequestApproval = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!approvalModal.projectId || !clientEmail) return;
-
-        setSendingApproval(true);
-        try {
-            const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
-            const res = await fetch(`${apiBase}/approval/request/${approvalModal.projectId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-owner-email': email
-                },
-                body: JSON.stringify({ email: clientEmail })
-            });
-
-            if (res.ok) {
-                alert('Approval request sent!');
-                setApprovalModal({ open: false, projectId: null });
-                setClientEmail('');
-            } else {
-                const err = await res.json();
-                alert(`Error: ${err.error}`);
-            }
-        } catch (err) {
-            console.error('Approval request failed', err);
-            alert('Failed to send request');
+            fetchProjects(authEmail!);
+            toast.success("Feedback link generated");
+        } catch (e) {
+            toast.error("Failed to generate link");
         } finally {
-            setSendingApproval(false);
+            setCreatingLink(null);
         }
     };
 
-    if (!isLoggedIn) {
-        return (
-            <div className={styles.container}>
-                <div className={styles.loginContainer}>
-                    <h1 className="text-2xl font-bold mb-4">Agency Login</h1>
-                    <form onSubmit={handleLogin} className="flex flex-col gap-4">
-                        <input
-                            type="email"
-                            placeholder="Enter your email"
-                            className="input bg-[var(--bg-dark)] border border-[var(--border)] p-2 rounded text-white"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            required
-                        />
-                        <button className="btn btn-primary w-full">Access Dashboard</button>
-                    </form>
-                </div>
-            </div>
-        );
+    const handleCreateProject = async (name: string, baseUrl: string) => {
+        const ownerEmail = localStorage.getItem('annota_owner_email')?.trim().toLowerCase();
+
+        if (!ownerEmail) {
+            toast.error("Set your email first to create projects.");
+            throw new Error("Owner email is missing");
+        }
+
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+
+        const res = await fetch(`${apiBase}/projects`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-owner-email': ownerEmail
+            },
+            body: JSON.stringify({ name, baseUrl })
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            const msg = data.message || "Failed to create project";
+            toast.error(msg);
+            throw new Error(msg);
+        }
+
+        toast.success("Project created successfully");
+        setIsModalOpen(false);
+
+        // Optimistic update or refetch
+        // We'll refetch to be safe and simple since we have the function
+        await fetchProjects(ownerEmail);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('annota_owner_email');
+        setAuthEmail(null);
+        setProjects([]);
+        toast.message("Logged out");
+        router.push('/');
+    };
+
+    if (!authEmail) {
+        return null;
     }
 
     return (
-        <div className={styles.container}>
-            <header className={styles.dashboardHeader}>
-                <div>
-                    <h1 className="text-3xl font-bold">Dashboard</h1>
-                    <p className="text-[var(--muted)]">Welcome, {email}</p>
-                </div>
-                <button
-                    className="btn btn-ghost text-sm"
-                    onClick={() => {
-                        localStorage.removeItem('agency_email');
-                        setIsLoggedIn(false);
-                        setEmail('');
-                    }}
-                >
-                    Logout
-                </button>
-            </header>
-
-            {/* Create Project */}
-            <form onSubmit={handleCreate} className={styles.createForm}>
-                <input
-                    type="text"
-                    placeholder="Project Name"
-                    className="bg-transparent border border-[var(--border)] p-2 rounded text-white flex-1"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    required
-                />
-                <input
-                    type="url"
-                    placeholder="Website URL (https://...)"
-                    className="bg-transparent border border-[var(--border)] p-2 rounded text-white flex-1"
-                    value={newUrl}
-                    onChange={e => setNewUrl(e.target.value)}
-                    required
-                />
-                <button className="btn btn-primary whitespace-nowrap">
-                    + Create Project
-                </button>
-            </form>
-
-            {/* Project List */}
-            {loading ? (
-                <div className="text-center text-[var(--muted)]">Loading projects...</div>
-            ) : (
-                <div className={styles.projectsGrid}>
-                    {projects.map(p => (
-                        <div key={p.id} className={styles.projectCard}>
-                            <div className={styles.cardHeader}>
-                                <h3 className={styles.projectName}>{p.name}</h3>
-                                <span className={`text-xs font-bold px-2 py-1 rounded border ${p.status === 'APPROVED' ? 'border-green-800 text-green-400' : 'border-[var(--accent2)] text-[var(--accent2)]'}`}>
-                                    {p.status}
-                                </span>
-                            </div>
-                            <a href={p.baseUrl} target="_blank" className={styles.projectUrl}>
-                                {p.baseUrl} ↗
-                            </a>
-
-                            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-white/10">
-                                {p.feedbackLink ? (
-                                    <a
-                                        href={`/f/${p.feedbackLink.token}`}
-                                        className="btn btn-primary text-center py-2 text-sm w-full"
-                                    >
-                                        Open Review Tool
-                                    </a>
-                                ) : (
-                                    <button className="btn btn-ghost text-xs w-full">
-                                        Generate Link
-                                    </button>
-                                )}
-
-                                <button
-                                    className="btn btn-ghost border border-white/20 text-sm hover:bg-white/10 w-full"
-                                    onClick={() => setApprovalModal({ open: true, projectId: p.id })}
-                                    disabled={p.status === 'APPROVED'}
-                                >
-                                    {p.status === 'APPROVED' ? '✓ Approved' : '✉ Request Approval'}
-                                </button>
-                            </div>
+        <div className="min-h-screen bg-[var(--bg-0)] text-[var(--text-0)] font-sans selection:bg-[var(--accent-0)]/30">
+            <AppHeader
+                title="Dashboard"
+                rightSlot={
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="btn btn-primary text-xs py-2 px-4 shadow-[0_4px_14px_0_rgba(0,243,255,0.2)] hover:shadow-[0_6px_20px_rgba(0,243,255,0.35)]"
+                        >
+                            + New Project
+                        </button>
+                        <div className="h-6 w-px bg-white/10 mx-1"></div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-[var(--text-1)] hidden sm:inline-block">{authEmail}</span>
+                            <button
+                                onClick={handleLogout}
+                                className="btn btn-secondary text-xs py-2 px-4"
+                            >
+                                Logout
+                            </button>
                         </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Simple Modal */}
-            {approvalModal.open && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-                }}>
-                    <div className={styles.loginContainer} style={{ margin: 0, minWidth: '400px' }}>
-                        <h2 className="text-xl font-bold mb-4">Request Client Approval</h2>
-                        <form onSubmit={handleRequestApproval} className="flex flex-col gap-4">
-                            <input
-                                type="email"
-                                placeholder="Client Email"
-                                className="input bg-[var(--bg-dark)] border border-[var(--border)] p-2 rounded text-white"
-                                value={clientEmail}
-                                onChange={e => setClientEmail(e.target.value)}
-                                autoFocus
-                                required
-                            />
-                            <div className="flex gap-2 justify-end mt-2">
-                                <button
-                                    type="button"
-                                    className="btn btn-ghost text-sm"
-                                    onClick={() => setApprovalModal({ open: false, projectId: null })}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    className="btn btn-primary"
-                                    disabled={sendingApproval}
-                                >
-                                    {sendingApproval ? 'Sending...' : 'Send Request'}
-                                </button>
-                            </div>
-                        </form>
                     </div>
-                </div>
-            )}
+                }
+            />
+
+            <main className="container mx-auto max-w-5xl px-6 py-12">
+                {loading ? (
+                    <div className="animate-pulse space-y-4 max-w-2xl mx-auto mt-10">
+                        <div className="h-24 bg-[var(--bg-1)] rounded-xl border border-[var(--border-0)]"></div>
+                        <div className="h-24 bg-[var(--bg-1)] rounded-xl border border-[var(--border-0)]"></div>
+                    </div>
+                ) : projects.length === 0 ? (
+                    <div className="text-center py-24 glass-panel rounded-2xl border-dashed border-[var(--border-0)] max-w-2xl mx-auto mt-10">
+                        <h3 className="text-lg font-bold mb-2">No projects found</h3>
+                        <p className="text-[var(--text-1)]">Projects created via API will appear here.</p>
+                    </div>
+                ) : (
+                    <div className="grid gap-4 max-w-4xl mx-auto">
+                        <div className="flex justify-between items-end mb-4 px-2">
+                            <h2 className="text-sm font-bold text-[var(--text-1)] uppercase tracking-wider">Your Projects</h2>
+                            <span className="text-xs text-[var(--text-1)]">{projects.length} Active</span>
+                        </div>
+
+                        {projects.map(p => (
+                            <div key={p.id} className="glass-panel p-6 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 group hover:translate-y-[-2px] transition-transform duration-300">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <h3 className="font-bold text-lg text-[var(--text-0)] truncate">{p.name}</h3>
+                                        {p.status === 'APPROVED' ? (
+                                            <span className="text-[10px] bg-green-500/10 text-green-400 px-2.5 py-1 rounded-full border border-green-500/20 font-bold tracking-wide">APPROVED</span>
+                                        ) : (
+                                            <span className="text-[10px] bg-[var(--bg-2)] text-[var(--text-1)] px-2.5 py-1 rounded-full border border-[var(--border-0)] font-bold tracking-wide">IN REVIEW</span>
+                                        )}
+                                    </div>
+                                    <a href={p.baseUrl} target="_blank" className="flex items-center gap-1.5 text-xs text-[var(--text-1)] hover:text-[var(--accent-0)] transition-colors w-fit group/link">
+                                        <span className="truncate max-w-[300px]">{p.baseUrl}</span>
+                                        <span className="opacity-0 group-hover/link:opacity-100 transition-opacity">↗</span>
+                                    </a>
+                                </div>
+
+                                <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+                                    {p.feedbackLink ? (
+                                        <>
+                                            <a
+                                                href={`/f/${p.feedbackLink.token}`}
+                                                target="_blank"
+                                                className="btn btn-secondary text-xs py-2 px-4 flex-1 md:flex-none text-center"
+                                            >
+                                                Open Review ↗
+                                            </a>
+                                            <Link
+                                                href={`/dashboard/projects/${p.id}`}
+                                                className="btn btn-primary text-xs py-2 px-5 flex-1 md:flex-none text-center shadow-[0_4px_14px_0_rgba(0,243,255,0.2)] hover:shadow-[0_6px_20px_rgba(0,243,255,0.35)]"
+                                            >
+                                                Manage
+                                            </Link>
+                                        </>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleGenerateLink(p.id)}
+                                            disabled={!!creatingLink}
+                                            className="btn btn-secondary text-xs py-2 px-4 w-full md:w-auto"
+                                        >
+                                            {creatingLink === p.id ? 'Generating...' : 'Generate Feedback Link'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </main>
+
+            <CreateProjectModal
+                open={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onCreate={handleCreateProject}
+            />
         </div>
     );
 }
