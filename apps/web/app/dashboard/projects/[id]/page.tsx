@@ -39,7 +39,8 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
             setProject(projData);
 
             // Fetch Comments for SPECIFIC page
-            const resComments = await fetch(`${apiBase}/comments/projects/${params.id}?pageUrl=${encodeURIComponent(pageUrl)}`, {
+            // FIXED: Use correct Next.js route hierarchy
+            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments?pageUrl=${encodeURIComponent(pageUrl)}`, {
                 headers: { 'x-owner-email': email }
             });
             if (resComments.ok) {
@@ -98,7 +99,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
         });
 
         if (res.ok) {
-            const resComments = await fetch(`${apiBase}/comments/projects/${params.id}?pageUrl=${encodeURIComponent(payload.pageUrl)}`, {
+            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments?pageUrl=${encodeURIComponent(payload.pageUrl)}`, {
                 headers: { 'x-owner-email': authEmail! }
             });
             if (resComments.ok) setComments(await resComments.json());

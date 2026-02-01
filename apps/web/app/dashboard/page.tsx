@@ -34,7 +34,8 @@ export default function DashboardPage() {
                 headers: { 'x-owner-email': ownerEmail }
             });
             if (res.ok) {
-                setProjects(await res.json());
+                const data = await res.json();
+                setProjects(data.projects || []);
             } else {
                 console.error('Failed to fetch projects');
             }
