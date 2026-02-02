@@ -175,7 +175,7 @@ export default function DashboardPage() {
                 }
             />
 
-            <main className="container mx-auto max-w-5xl px-6 py-12">
+            <main className="container mx-auto max-w-5xl px-4 md:px-6 py-8 md:py-12">
                 {loading ? (
                     <div className="animate-pulse space-y-4 max-w-2xl mx-auto mt-10">
                         <div className="h-24 bg-[var(--bg-1)] rounded-xl border border-[var(--border-0)]"></div>

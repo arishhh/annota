@@ -64,6 +64,9 @@ export default function ReviewInterface({
   const [prefilledText, setPrefilledText] = useState("");
   const [isInboxExpanded, setIsInboxExpanded] = useState(true);
 
+  // Mobile State
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   // Iframe & Navigation State
   const [iframeSrc, setIframeSrc] = useState(project.baseUrl);
 
@@ -161,6 +164,9 @@ export default function ReviewInterface({
       setFilterStatus("RESOLVED");
     }
 
+    // Close mobile menu on navigation
+    setIsMobileMenuOpen(false);
+
     // Navigate Iframe
     try {
       const base = project.baseUrl.replace(/\/$/, "");
@@ -238,6 +244,12 @@ export default function ReviewInterface({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [popover.isOpen]);
 
+  const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
+
+  // Counts for mobile badge
+  const totalComments = comments.length;
+  const pendingTotal = comments.filter(c => c.status === 'OPEN').length;
+
   return (
     <div className={styles.pageContainer}>
       <div className={styles.mainArea}>
@@ -246,114 +258,108 @@ export default function ReviewInterface({
           logoHref={mode === 'agency' ? '/dashboard' : undefined}
           description={
             <div className="flex items-center gap-3">
-              {mode === "agency" && (
-                <>
-                  Agency View
-                  <span className="text-white/20">|</span>
-                </>
-              )}
-
-              <div className="flex items-center gap-2">
+              {/* Simplified Layout: Only path, cleaner visual */}
+              <div className="flex items-center gap-2 bg-white/5 rounded-full px-3 py-1 border border-white/5">
                 {isEmbedDetected ? (
-                  <>
-                    <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">
-                      Page detected
-                    </span>
-                    <span className="text-xs font-mono text-[var(--muted)]">
-                      {currentPath}
-                    </span>
-                  </>
+                  <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" title="Page Detected" />
                 ) : (
-                  <>
-                    <span className="text-[10px] uppercase tracking-wide text-yellow-500/90 whitespace-nowrap">
-                      Manual Page Selection:
-                    </span>
-                    <div className="flex flex-col">
-                      <input
-                        type="text"
-                        value={currentPath}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setCurrentPath(val);
-                          if (onPathChange) onPathChange(val);
-                          if (!val.startsWith("/") && commentMode) {
-                            setCommentMode(false);
-                          }
-                        }}
-                        className={`bg-black/40 border rounded px-2 py-0.5 text-xs focus:outline-none w-[160px] transition-all
-                                                    ${!isPathValid
-                            ? "border-red-500/50 text-red-400 focus:border-red-500"
-                            : "border-yellow-500/30 text-yellow-400 focus:border-yellow-500/60"
-                          }
-                                                `}
-                        placeholder="/path (e.g. /about)"
-                      />
-                    </div>
-                  </>
+                  <span className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]" title="Manual Mode" />
+                )}
+
+                {isEmbedDetected ? (
+                  <span className="text-xs font-mono text-[var(--text-1)] truncate max-w-[150px] md:max-w-[300px]">
+                    {currentPath}
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    value={currentPath}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCurrentPath(val);
+                      if (onPathChange) onPathChange(val);
+                      if (!val.startsWith("/") && commentMode) {
+                        setCommentMode(false);
+                      }
+                    }}
+                    className="bg-transparent border-none p-0 text-xs font-mono text-[var(--accent-1)] focus:outline-none w-[120px] md:w-[200px] placeholder-white/20"
+                    placeholder="/path"
+                  />
                 )}
               </div>
             </div>
           }
           rightSlot={
             <div className="flex items-center gap-3">
-              {mode === "agency" && (
-                <div className="flex items-center gap-2 mr-4 border-r border-white/10 pr-4">
-                  <button
-                    onClick={() => {
-                      const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-                      const scriptTag = `<script src="${appUrl}/embed.js" async></script>`;
-                      navigator.clipboard.writeText(scriptTag);
-                      toast.success('Embed script copied!');
-                    }}
-                    className="text-[10px] bg-[var(--accent-1)]/10 text-[var(--accent-1)] hover:bg-[var(--accent-1)]/20 px-2 py-1 rounded font-bold tracking-wide uppercase transition-colors"
-                  >
-                    Copy Embed Script
-                  </button>
+              {/* MOBILE TOGGLE */}
+              <button
+                onClick={toggleMobileMenu}
+                className="md:hidden flex items-center justify-center p-2 rounded bg-white/10 text-white relative"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                {pendingTotal > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {pendingTotal}
+                  </span>
+                )}
+              </button>
 
-                  {onRequestApprovalClick && project.status !== "APPROVED" && (
+              {/* DESKTOP ACTIONS */}
+              <div className="hidden md:flex items-center gap-3">
+
+                {mode === "agency" && (
+                  <div className="flex items-center gap-2 mr-4 border-r border-white/10 pr-4">
+                    {/* Copy Embed Button */}
                     <button
-                      onClick={onRequestApprovalClick}
-                      className="text-xs font-semibold bg-[var(--accent-0)]/10 text-[var(--accent-0)] border border-[var(--accent-0)]/20 hover:bg-[var(--accent-0)]/20 px-3 py-1.5 rounded transition-all ml-2 flex items-center gap-2 shadow-[0_0_10px_rgba(0,243,255,0.05)] hover:shadow-[0_0_15px_rgba(0,243,255,0.15)]"
+                      onClick={() => {
+                        const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+                        const scriptTag = `<script src="${appUrl}/embed.js" async></script>`;
+                        navigator.clipboard.writeText(scriptTag);
+                        toast.success('Embed script copied!');
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-white/10 text-[var(--text-1)] hover:text-white transition-colors text-xs font-medium"
+                      title="Copy Embed Script"
                     >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      Request Approval
+                      <span className="hidden lg:inline uppercase tracking-wide text-[10px] font-bold">Copy Embed</span>
                     </button>
-                  )}
-                </div>
-              )}
 
-              {project?.status === "APPROVED" ? (
-                <div className="flex flex-col items-end">
+                    {onRequestApprovalClick && project.status !== "APPROVED" && (
+                      <button
+                        onClick={onRequestApprovalClick}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-white/10 text-[var(--text-1)] hover:text-[var(--accent-1)] transition-colors text-xs font-medium"
+                        title="Request Approval"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="hidden lg:inline uppercase tracking-wide text-[10px] font-bold">Request Approval</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {project?.status === "APPROVED" ? (
                   <span className="px-3 py-1 bg-green-500/10 text-green-400 rounded-full text-xs font-bold border border-green-500/20 tracking-wide uppercase">
                     ✓ {PROJECT_STATUS_LABELS.APPROVED}
                   </span>
-                  {project.approvedAt && (
-                    <span className="text-[10px] text-[var(--muted)] mt-1">
-                      {new Date(project.approvedAt).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-end">
+                ) : (
                   <button
-                    className={`btn ${commentMode ? "btn-primary" : "btn-secondary"} py-1.5 px-3 text-xs 
-                                            ${!isPathValid ? "opacity-50 cursor-not-allowed" : ""}`}
+                    className={`btn ${commentMode ? "btn-primary" : "btn-secondary"} py-1.5 px-4 text-xs font-medium 
+                                                ${!isPathValid ? "opacity-50 cursor-not-allowed" : ""}`}
                     onClick={() => {
                       if (isPathValid) setCommentMode(!commentMode);
                     }}
                     disabled={!isPathValid}
                   >
-                    {commentMode ? "● Comment Mode" : "○ Comment Mode"}
+                    {commentMode ? "● Commenting" : "○ Comment"}
                   </button>
-                  {!isPathValid && (
-                    <span className="text-[9px] text-red-400 mt-1">
-                      Select a valid page path to add comments.
-                    </span>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           }
         />
@@ -401,6 +407,11 @@ export default function ReviewInterface({
                   document
                     .getElementById(`comment-${comment.id}`)
                     ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+                  // Open mobile menu to show comment
+                  if (window.innerWidth <= 768) {
+                    setIsMobileMenuOpen(true);
+                  }
                 }}
                 onMouseEnter={() => setActiveCommentId(comment.id)}
                 onMouseLeave={() => setActiveCommentId(null)}
@@ -430,13 +441,8 @@ export default function ReviewInterface({
                 {!popover.isOpen && (
                   <div className={styles.helperText}>
                     {prefilledText
-                      ? "Click on the page to place your new comment"
-                      : "Click anywhere to leave a comment"}
-                    {!isEmbedDetected && (
-                      <div className="text-[10px] mt-1 text-yellow-300/80 bg-black/50 px-2 py-0.5 rounded">
-                        Automatic page detection requires the Annota script.
-                      </div>
-                    )}
+                      ? "Click to comment"
+                      : "Click anywhere"}
                   </div>
                 )}
                 {popover.isOpen && (
@@ -478,7 +484,17 @@ export default function ReviewInterface({
         </div>
       </div>
 
-      <div className={styles.sidebar}>
+      {/* Sidebar with Mobile Toggle Class */}
+      <div className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}>
+
+        {/* Mobile Header in Menu */}
+        <div className="md:hidden flex items-center justify-between p-4 border-b border-white/10 bg-[var(--bg-1)]">
+          <span className="font-bold text-lg">Feedback</span>
+          <button onClick={toggleMobileMenu} className="p-2 text-[var(--text-1)]">
+            ✕ Close
+          </button>
+        </div>
+
         {/* FEEDBACK INBOX SECTION */}
         {(pagesWithPending.length > 0 || pagesResolvedOnly.length > 0) && (
           <div className="border-b border-white/5">
@@ -594,7 +610,7 @@ export default function ReviewInterface({
                   <p className={styles.emptyStateDesc}>
                     {project?.status === "APPROVED"
                       ? "This project has been approved by the client."
-                      : "Everything looks good! Switch to Comment Mode to add a new note."}
+                      : "Switch to Comment Mode to add a new note."}
                   </p>
                 </>
               ) : (
@@ -604,7 +620,7 @@ export default function ReviewInterface({
                     No resolved items
                   </div>
                   <p className={styles.emptyStateDesc}>
-                    Resolved comments will appear here for reference.
+                    Resolved comments will appear here.
                   </p>
                 </>
               )}
@@ -617,7 +633,10 @@ export default function ReviewInterface({
                 className={`${styles.commentCard} ${activeCommentId === c.id ? styles.cardActive : ""}`}
                 onMouseEnter={() => setActiveCommentId(c.id)}
                 onMouseLeave={() => setActiveCommentId(null)}
-                onClick={() => setActiveCommentId(c.id)}
+                onClick={() => {
+                  setActiveCommentId(c.id);
+                  // On mobile, keep sidebar open to read it.
+                }}
               >
                 <div className={styles.commentHeader}>
                   <div className="flex items-center gap-2">
@@ -678,6 +697,8 @@ export default function ReviewInterface({
                         );
                         setCommentMode(true);
                         setFilterStatus("OPEN");
+                        // Close sidebar on mobile to allow commenting
+                        if (window.innerWidth <= 768) setIsMobileMenuOpen(false);
                       }}
                     >
                       Not fixed? Add new comment

@@ -22,7 +22,7 @@ export default function AppHeader({ rightSlot, title, description, logoHref }: A
     );
 
     return (
-        <header className="glass-panel sticky top-0 z-50 px-6 py-4 flex justify-between items-center rounded-none border-t-0 border-x-0 bg-[#0B0D12]/80 backdrop-blur-md">
+        <header className="glass-panel sticky top-0 z-50 px-4 md:px-6 py-4 flex justify-between items-center rounded-none border-t-0 border-x-0 bg-[#0B0D12]/80 backdrop-blur-md">
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                     {logoHref ? (
@@ -40,9 +40,9 @@ export default function AppHeader({ rightSlot, title, description, logoHref }: A
                 {title && (
                     <>
                         <div className="h-4 w-px bg-white/10 mx-2"></div>
-                        <div className="flex flex-col justify-center">
+                        <div className="flex flex-col md:flex-row md:items-center justify-center gap-1 md:gap-4">
                             <span className="text-sm font-medium text-[var(--text-0)] leading-none">{title}</span>
-                            {description && <span className="text-[10px] text-[var(--text-1)] uppercase tracking-wider mt-0.5">{description}</span>}
+                            {description && <span className="text-[10px] text-[var(--text-1)] uppercase tracking-wider mt-0.5 md:mt-0">{description}</span>}
                         </div>
                     </>
                 )}

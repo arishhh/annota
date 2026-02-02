@@ -20,7 +20,19 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-/* ... */
+.title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--text-0);
+}
+
+.subtitle {
+    color: var(--text-1);
+    margin-bottom: 30px;
+    line-height: 1.5;
+}
+
 .pinInput {
     font-size: 2rem;
     letter-spacing: 0.5rem;
@@ -74,4 +86,20 @@
     color: #ef4444;
     margin-top: 10px;
     font-size: 0.9rem;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 640px) {
+    .card {
+        padding: 24px;
+    }
+
+    .pinInput {
+        font-size: 1.5rem;
+        letter-spacing: 0.25rem;
+    }
+
+    .title {
+        font-size: 1.25rem;
+    }
 }
