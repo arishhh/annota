@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import ReviewInterface from '../../../../components/ReviewInterface';
+import RequestApprovalModal from '../../../../components/RequestApprovalModal';
 
 
 export default function ProjectDashboard({ params }: { params: { id: string } }) {
@@ -14,7 +15,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
     const [project, setProject] = useState<any>(null);
     const [comments, setComments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [requesting, setRequesting] = useState(false);
+    const [showApprovalModal, setShowApprovalModal] = useState(false);
 
     const apiBase = '/api';
 
@@ -40,7 +41,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
 
             // Fetch Comments for SPECIFIC page
             // FIXED: Use correct Next.js route hierarchy
-            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments?pageUrl=${encodeURIComponent(pageUrl)}`, {
+            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments`, {
                 headers: { 'x-owner-email': email }
             });
             if (resComments.ok) {
@@ -99,7 +100,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
         });
 
         if (res.ok) {
-            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments?pageUrl=${encodeURIComponent(payload.pageUrl)}`, {
+            const resComments = await fetch(`${apiBase}/projects/${params.id}/comments`, {
                 headers: { 'x-owner-email': authEmail! }
             });
             if (resComments.ok) setComments(await resComments.json());
@@ -112,28 +113,31 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
     // ... (rest of the file)
 
 
-    const handleRequestApproval = async () => {
-        if (!confirm('Send approval request email to yourself?')) return;
-        setRequesting(true);
+    const handleSendApproval = async (clientEmail: string) => {
         try {
-            const res = await fetch(`${apiBase}/approval/request`, {
+            const res = await fetch(`${apiBase}/projects/${params.id}/approval-request`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'x-owner-email': authEmail!
                 },
-                body: JSON.stringify({ projectId: project.id })
+                body: JSON.stringify({ clientEmail }) // Pass clientEmail
             });
 
+            const data = await res.json();
+
             if (res.ok) {
-                toast.success('Approval request sent! Check your email.');
+                toast.success('Approval request sent!');
+                // Close modal
+                setShowApprovalModal(false);
             } else {
-                toast.error('Failed to send request');
+                toast.error(data.error || 'Failed to send request');
+                throw new Error(data.error);
             }
         } catch (e) {
-            toast.error('Error sending request');
-        } finally {
-            setRequesting(false);
+            console.error(e);
+            // Error managed in modal or here
+            throw e;
         }
     };
 
@@ -153,6 +157,13 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
                     onCreateComment={handleCreateComment}
                     onUpdateCommentStatus={handleUpdateStatus}
                     onPathChange={handlePathChange}
+                    onRequestApprovalClick={() => setShowApprovalModal(true)}
+                />
+
+                <RequestApprovalModal
+                    open={showApprovalModal}
+                    onClose={() => setShowApprovalModal(false)}
+                    onRequest={handleSendApproval}
                 />
             </div>
         </div>

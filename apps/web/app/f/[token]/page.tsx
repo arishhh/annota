@@ -22,7 +22,8 @@ export default function FeedbackPage({ params }: { params: { token: string } }) 
             setProject(dataProject.project);
 
             // Fetch comments for SPECIFIC page
-            const resComments = await fetch(`${apiBase}/f/${params.token}/comments?pageUrl=${encodeURIComponent(pageUrl)}`);
+            // Fetch ALL comments to populate Inbox
+            const resComments = await fetch(`${apiBase}/f/${params.token}/comments`);
             if (resComments.ok) {
                 setComments(await resComments.json());
             }
@@ -66,7 +67,8 @@ export default function FeedbackPage({ params }: { params: { token: string } }) 
         if (!res.ok) throw new Error('Failed to post comment');
 
         // Refresh
-        const resComments = await fetch(`${apiBase}/f/${params.token}/comments?pageUrl=${encodeURIComponent(payload.pageUrl)}`);
+        // Refresh
+        const resComments = await fetch(`${apiBase}/f/${params.token}/comments`);
         if (resComments.ok) setComments(await resComments.json());
         toast.success('Comment added');
     };

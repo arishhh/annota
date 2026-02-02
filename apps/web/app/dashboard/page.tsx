@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import AppHeader from '../../components/AppHeader';
 import CreateProjectModal from '../../components/CreateProjectModal';
+import RequestApprovalModal from '../../components/RequestApprovalModal';
+import { PROJECT_STATUS_LABELS } from '../../src/lib/constants';
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -14,6 +16,10 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(false);
     const [creatingLink, setCreatingLink] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    // Approval Modal State
+    const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
     // 1. Auth Check (Client-side simple check)
     useEffect(() => {
@@ -37,10 +43,10 @@ export default function DashboardPage() {
                 const data = await res.json();
                 setProjects(data.projects || []);
             } else {
-                console.error('Failed to fetch projects');
+                // Silent fail for user, keep valid state
             }
         } catch (e) {
-            console.error(e);
+            // checking error silently
         } finally {
             setLoading(false);
         }
@@ -97,6 +103,40 @@ export default function DashboardPage() {
         await fetchProjects(ownerEmail);
     };
 
+    const handleOpenApprovalModal = (projectId: string) => {
+        setSelectedProjectId(projectId);
+        setApprovalModalOpen(true);
+    };
+
+    const handleSendApproval = async (clientEmail: string) => {
+        if (!selectedProjectId || !authEmail) return;
+
+        try {
+            const res = await fetch(`/api/projects/${selectedProjectId}/approval-request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-owner-email': authEmail
+                },
+                body: JSON.stringify({ clientEmail })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                toast.success('Approval request sent!');
+                setApprovalModalOpen(false);
+                setSelectedProjectId(null);
+            } else {
+                toast.error(data.error || 'Failed to send request');
+                throw new Error(data.error);
+            }
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    };
+
     const handleLogout = () => {
         localStorage.removeItem('annota_owner_email');
         setAuthEmail(null);
@@ -143,8 +183,14 @@ export default function DashboardPage() {
                     </div>
                 ) : projects.length === 0 ? (
                     <div className="text-center py-24 glass-panel rounded-2xl border-dashed border-[var(--border-0)] max-w-2xl mx-auto mt-10">
-                        <h3 className="text-lg font-bold mb-2">No projects found</h3>
-                        <p className="text-[var(--text-1)]">Projects created via API will appear here.</p>
+                        <h3 className="text-lg font-bold mb-2">Create your first project</h3>
+                        <p className="text-[var(--text-1)]">Start collecting website feedback from your clients.</p>
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="btn btn-secondary mt-6"
+                        >
+                            Create Project
+                        </button>
                     </div>
                 ) : (
                     <div className="grid gap-4 max-w-4xl mx-auto">
@@ -159,9 +205,13 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-3 mb-2">
                                         <h3 className="font-bold text-lg text-[var(--text-0)] truncate">{p.name}</h3>
                                         {p.status === 'APPROVED' ? (
-                                            <span className="text-[10px] bg-green-500/10 text-green-400 px-2.5 py-1 rounded-full border border-green-500/20 font-bold tracking-wide">APPROVED</span>
+                                            <span className="text-[10px] bg-green-500/10 text-green-400 px-2.5 py-1 rounded-full border border-green-500/20 font-bold tracking-wide uppercase">
+                                                {PROJECT_STATUS_LABELS.APPROVED}
+                                            </span>
                                         ) : (
-                                            <span className="text-[10px] bg-[var(--bg-2)] text-[var(--text-1)] px-2.5 py-1 rounded-full border border-[var(--border-0)] font-bold tracking-wide">IN REVIEW</span>
+                                            <span className="text-[10px] bg-[var(--bg-2)] text-[var(--text-1)] px-2.5 py-1 rounded-full border border-[var(--border-0)] font-bold tracking-wide uppercase">
+                                                {PROJECT_STATUS_LABELS.IN_REVIEW}
+                                            </span>
                                         )}
                                     </div>
                                     <a href={p.baseUrl} target="_blank" className="flex items-center gap-1.5 text-xs text-[var(--text-1)] hover:text-[var(--accent-0)] transition-colors w-fit group/link">
@@ -173,13 +223,14 @@ export default function DashboardPage() {
                                 <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
                                     {p.feedbackLink ? (
                                         <>
-                                            <a
-                                                href={`/f/${p.feedbackLink.token}`}
-                                                target="_blank"
-                                                className="btn btn-secondary text-xs py-2 px-4 flex-1 md:flex-none text-center"
-                                            >
-                                                Open Review ↗
-                                            </a>
+                                            {p.status !== 'APPROVED' && (
+                                                <button
+                                                    onClick={() => handleOpenApprovalModal(p.id)}
+                                                    className="btn btn-secondary text-xs py-2 px-4 flex-1 md:flex-none text-center border-dashed hover:border-solid hover:border-[var(--accent-0)]/50 hover:bg-[var(--accent-0)]/5 hover:text-[var(--accent-0)] transition-all"
+                                                >
+                                                    Request Approval
+                                                </button>
+                                            )}
                                             <Link
                                                 href={`/dashboard/projects/${p.id}`}
                                                 className="btn btn-primary text-xs py-2 px-5 flex-1 md:flex-none text-center shadow-[0_4px_14px_0_rgba(0,243,255,0.2)] hover:shadow-[0_6px_20px_rgba(0,243,255,0.35)]"
@@ -207,6 +258,15 @@ export default function DashboardPage() {
                 open={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onCreate={handleCreateProject}
+            />
+
+            <RequestApprovalModal
+                open={approvalModalOpen}
+                onClose={() => {
+                    setApprovalModalOpen(false);
+                    setSelectedProjectId(null);
+                }}
+                onRequest={handleSendApproval}
             />
         </div>
     );

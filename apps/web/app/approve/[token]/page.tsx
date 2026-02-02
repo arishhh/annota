@@ -47,7 +47,7 @@ export default function ApprovalPage() {
     // Handle Auto-Redirect Timer
     useEffect(() => {
         if (success && commentToken && !redirectCancelled) {
-            setRedirectIn(3); // Start 3s countdown
+            setRedirectIn(5); // Start 5s countdown (slightly longer for ceremony)
             const timer = setInterval(() => {
                 setRedirectIn((prev) => {
                     if (prev === 1) {
@@ -114,14 +114,23 @@ export default function ApprovalPage() {
         return (
             <div className={styles.container}>
                 <div className={styles.card}>
-                    <div className={styles.successIcon}>✓</div>
-                    <h1 className={styles.title}>Project Approved!</h1>
+                    {/* Ceremonial Checkmark */}
+                    <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)] animate-[scaleIn_0.4s_ease-out]">
+                        <svg className="w-10 h-10 text-black drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+
+                    <h1 className={styles.title}>Project Approved</h1>
                     <p className={styles.subtitle}>
-                        Thank you. <strong>{project.name}</strong> has been successfully approved.<br />
-                        <span className="text-xs text-[var(--muted)] block mt-2">Approved on: {approvedDate}</span>
+                        Thanks for reviewing the changes. Your approval has been recorded.
+                        <br />
+                        <span className="text-xs text-[var(--muted)] block mt-2 opacity-60 uppercase tracking-widest font-bold">
+                            Approved on {approvedDate}
+                        </span>
                     </p>
 
-                    <div className="flex flex-col gap-3 mt-6">
+                    <div className="flex flex-col gap-3 mt-8 w-full max-w-xs mx-auto">
                         {commentToken && (
                             <a
                                 href={`/f/${commentToken}`}
@@ -136,19 +145,19 @@ export default function ApprovalPage() {
                             href={project.baseUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-[var(--muted)] hover:text-white underline mt-2"
+                            className="text-sm text-[var(--muted)] hover:text-white transition-colors py-2"
                             onClick={() => setRedirectCancelled(true)}
                         >
-                            Open Website
+                            Open Website ↗
                         </a>
                     </div>
 
                     {redirectIn !== null && redirectIn > 0 && !redirectCancelled && (
-                        <div className="mt-4 text-xs text-[var(--muted)]">
-                            Redirecting in {redirectIn}s...
+                        <div className="mt-6 text-[10px] text-[var(--muted)] opacity-50">
+                            Redirecting to feedback in {redirectIn}s...
                             <button
                                 onClick={() => setRedirectCancelled(true)}
-                                className="ml-2 underline hover:text-white cursor-pointer"
+                                className="ml-1 underline hover:text-white cursor-pointer"
                             >
                                 Cancel
                             </button>
@@ -188,9 +197,15 @@ export default function ApprovalPage() {
                     {error && <div className={styles.error}>{error}</div>}
                 </form>
 
-                <div className="mt-8 pt-4 border-t border-white/10 text-xs text-[var(--muted)]">
+                <div className="mt-8 pt-4 border-t border-white/10 text-xs text-[var(--muted)] opacity-50">
                     Project URL: {project.baseUrl}
                 </div>
+            </div>
+            {/* Minimal footer for trust */}
+            <div className="absolute bottom-4 left-0 w-full text-center">
+                <span className="text-[9px] text-[var(--muted)] opacity-20 uppercase tracking-widest">
+                    Secure Approval by Annota
+                </span>
             </div>
         </div>
     );
