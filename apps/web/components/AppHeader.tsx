@@ -3,12 +3,13 @@ import Image from 'next/image';
 
 interface AppHeaderProps {
     rightSlot?: React.ReactNode;
+    leftSlot?: React.ReactNode;
     title?: string;
     description?: React.ReactNode;
     logoHref?: string;
 }
 
-export default function AppHeader({ rightSlot, title, description, logoHref }: AppHeaderProps) {
+export default function AppHeader({ rightSlot, leftSlot, title, description, logoHref }: AppHeaderProps) {
     const Logo = (
         <Image
             src="/brand/annota-logo.png"
@@ -37,6 +38,11 @@ export default function AppHeader({ rightSlot, title, description, logoHref }: A
                         Early Access
                     </span>
                 </div>
+                {leftSlot && (
+                    <div className="flex items-center gap-2">
+                        {leftSlot}
+                    </div>
+                )}
                 {title && (
                     <>
                         <div className="h-4 w-px bg-white/10 mx-2"></div>

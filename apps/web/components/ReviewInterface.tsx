@@ -96,9 +96,11 @@ export default function ReviewInterface({
   const [isManualMode, setIsManualMode] = useState(true);
   const [currentPath, setCurrentPath] = useState("/");
   
-  // --- Iframe Scroll Tracking ---
+  // --- Iframe Scroll & Dimension Tracking ---
   const [iframeScrollX, setIframeScrollX] = useState(0);
   const [iframeScrollY, setIframeScrollY] = useState(0);
+  const [iframeWidth, setIframeWidth] = useState(0);
+  const [initialIframeWidths, setInitialIframeWidths] = useState<Record<string, number>>({});
 
   const isPathValid = currentPath && currentPath.startsWith("/");
 
@@ -107,10 +109,13 @@ export default function ReviewInterface({
     const handleMessage = (event: MessageEvent) => {
       if (!event.data || event.data.source !== "annota-embed") return;
 
-      // Handle scroll updates
+      // Handle scroll & dimension updates
       if (event.data.type === "scroll-update") {
         setIframeScrollX(event.data.scrollX ?? 0);
         setIframeScrollY(event.data.scrollY ?? 0);
+        if (event.data.innerWidth) {
+          setIframeWidth(event.data.innerWidth);
+        }
         return;
       }
 
@@ -265,6 +270,24 @@ export default function ReviewInterface({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [popover.isOpen]);
 
+  // Set initial baseline width when iframe loads
+  useEffect(() => {
+    if (iframeStatus === "LOADED" && iframeWidth > 0 && !initialIframeWidths[project.id]) {
+      setInitialIframeWidths(prev => ({ ...prev, [project.id]: iframeWidth }));
+    }
+  }, [iframeStatus, iframeWidth, project.id, initialIframeWidths]);
+
+  // Force re-render on container resize
+  useEffect(() => {
+    if (!overlayRef.current) return;
+    const observer = new ResizeObserver(() => {
+      // Trigger a light re-render to update pin positions
+      setIframeWidth(prev => prev); 
+    });
+    observer.observe(overlayRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
 
   // Counts for mobile badge
@@ -277,6 +300,23 @@ export default function ReviewInterface({
         <AppHeader
           title={project?.name}
           logoHref={mode === 'agency' ? '/dashboard' : undefined}
+          leftSlot={
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="hidden md:flex items-center justify-center p-2 hover:bg-white/10 rounded-lg transition-all text-[#00F3FF] border border-[#00F3FF]/20 bg-[#00F3FF]/5 hover:border-[#00F3FF]/50 shadow-[0_0_10px_rgba(0,243,255,0.05)]"
+              title={isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                {!isSidebarCollapsed && (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                )}
+                {isSidebarCollapsed && (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                )}
+              </svg>
+            </button>
+          }
           description={
             <div className="flex items-center gap-3">
               {/* Simplified Layout: Only path, cleaner visual */}
@@ -329,7 +369,6 @@ export default function ReviewInterface({
 
               {/* DESKTOP ACTIONS */}
               <div className="hidden md:flex items-center gap-3">
-
                 {mode === "agency" && (
                   <div className="flex items-center gap-2 mr-4 border-r border-white/10 pr-4">
                     {/* Copy Embed Button */}
@@ -411,123 +450,138 @@ export default function ReviewInterface({
             </div>
           )}
 
-          {iframeStatus !== "ERROR" &&
-            displayedComments.map((comment, i) => {
-              // Convert document coordinates → viewport coordinates
-              const docX = comment.clickX;
-              const docY = comment.clickY;
-              const viewportX = docX - iframeScrollX;
-              const viewportY = docY - iframeScrollY;
+          {iframeStatus !== "ERROR" && (
+            <div
+              ref={overlayRef}
+              className={`${styles.overlay} ${commentMode ? styles.overlayActive : styles.overlayPassive}`}
+              onClick={handleOverlayClick}
+              style={{ pointerEvents: commentMode ? "auto" : "none" }}
+            >
+              {displayedComments.map((comment, i) => {
+                let docX = comment.clickX;
+                let docY = comment.clickY;
 
-              // Get overlay dimensions for boundary check
-              const overlayRect = overlayRef.current?.getBoundingClientRect();
-              const overlayWidth = overlayRect?.width || 0;
-              const overlayHeight = overlayRect?.height || 0;
+                // --- RESPONSIVE DRIFT COMPENSATION ---
+                // If the iframe width has changed since the pin was created (or the session started),
+                // and we assume the content is centered (common for most sites),
+                // we adjust the X coordinate based on the width delta / 2.
+                
+                // For now, we'll use the *first* width we saw for this project as the "baseline".
+                const baselineWidth = initialIframeWidths[project.id] || iframeWidth;
+                
+                // Only compensate if we have a valid baseline and current width
+                if (baselineWidth > 0 && iframeWidth > 0 && baselineWidth !== iframeWidth) {
+                  const widthDelta = iframeWidth - baselineWidth;
+                  docX = docX + (widthDelta / 2);
+                }
 
-              // Hide pins outside viewport (with 20px buffer)
-              const isOutsideViewport =
-                viewportX < -20 ||
-                viewportY < -20 ||
-                viewportX > overlayWidth + 20 ||
-                viewportY > overlayHeight + 20;
+                const viewportX = docX - iframeScrollX;
+                const viewportY = docY - iframeScrollY;
 
-              if (isOutsideViewport) return null;
+                const overlayRect = overlayRef.current?.getBoundingClientRect();
+                const overlayWidth = overlayRect?.width || 0;
+                const overlayHeight = overlayRect?.height || 0;
 
-              return (
-                <div
-                  key={comment.id}
-                  className={`${styles.pin} ${activeCommentId === comment.id ? styles.pinActive : ""} ${comment.status === "RESOLVED" ? styles.pinResolved : ""}`}
-                  style={{
-                    left: viewportX,
-                    top: viewportY,
-                    pointerEvents: commentMode ? "auto" : "none",
-                    display: filterStatus === comment.status ? "flex" : "none",
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveCommentId(comment.id);
-                    document
-                      .getElementById(`comment-${comment.id}`)
-                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                const isOutsideViewport =
+                  overlayWidth > 0 &&
+                  (viewportX < -20 ||
+                    viewportY < -20 ||
+                    viewportX > overlayWidth + 20 ||
+                    viewportY > overlayHeight + 20);
 
-                    // Open mobile menu to show comment
-                    if (window.innerWidth <= 768) {
-                      setIsMobileMenuOpen(true);
-                    }
-                  }}
-                  onMouseEnter={() => setActiveCommentId(comment.id)}
-                  onMouseLeave={() => setActiveCommentId(null)}
-                >
-                  {i + 1}
-                  {activeCommentId === comment.id && (
-                    <div className={styles.pinTooltip}>
-                      <span className={styles.tooltipStatus}>
-                        {PROJECT_STATUS_LABELS[comment.status] || comment.status}
-                      </span>
-                      <div className="line-clamp-3 overflow-hidden text-ellipsis">
-                        {comment.message}
+                if (isOutsideViewport) return null;
+
+                return (
+                  <div
+                    key={comment.id}
+                    className={`${styles.pin} ${activeCommentId === comment.id ? styles.pinActive : ""} ${comment.status === "RESOLVED" ? styles.pinResolved : ""}`}
+                    style={{
+                      left: viewportX,
+                      top: viewportY,
+                      pointerEvents: "auto",
+                      display: filterStatus === comment.status ? "flex" : "none",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveCommentId(comment.id);
+                      document
+                        .getElementById(`comment-${comment.id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+                      if (window.innerWidth <= 768) {
+                        setIsMobileMenuOpen(true);
+                      }
+                    }}
+                    onMouseEnter={() => setActiveCommentId(comment.id)}
+                    onMouseLeave={() => setActiveCommentId(null)}
+                  >
+                    {i + 1}
+                    {activeCommentId === comment.id && (
+                      <div className={styles.pinTooltip}>
+                        <span className={styles.tooltipStatus}>
+                          {PROJECT_STATUS_LABELS[comment.status] || comment.status}
+                        </span>
+                        <div className={styles.tooltipMessage}>
+                          {comment.message}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Commenting UI (Popover & Helper Text) */}
+              {commentMode && project.status !== "APPROVED" && (
+                <>
+                  {!popover.isOpen && (
+                    <div className={styles.helperText}>
+                      {prefilledText ? "Click to comment" : "Click anywhere"}
+                    </div>
+                  )}
+                  {popover.isOpen && (
+                    <div
+                      ref={popoverRef}
+                      className={styles.popover}
+                      style={{
+                        left: popover.x - iframeScrollX,
+                        top: popover.y - iframeScrollY,
+                        pointerEvents: "auto",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <textarea
+                        autoFocus
+                        placeholder="Add a comment..."
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                            handleSubmit();
+                        }}
+                      />
+                      <div className={styles.popoverActions}>
+                        <button
+                          className="btn btn-ghost py-1 px-3 text-sm"
+                          onClick={(e) => handleCancel(e)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn btn-primary py-1 px-3 text-sm"
+                          disabled={submitting || !commentText.trim()}
+                          onClick={handleSubmit}
+                        >
+                          {submitting ? "Saving..." : "Save"}
+                        </button>
                       </div>
                     </div>
                   )}
-                </div>
-              );
-            })}
+                </>
+              )}
+            </div>
+          )}
 
-          {commentMode &&
-            project.status !== "APPROVED" &&
-            iframeStatus !== "ERROR" && (
-              <div
-                ref={overlayRef}
-                className={styles.overlay}
-                onClick={handleOverlayClick}
-              >
-                {!popover.isOpen && (
-                  <div className={styles.helperText}>
-                    {prefilledText
-                      ? "Click to comment"
-                      : "Click anywhere"}
-                  </div>
-                )}
-                {popover.isOpen && (
-                  <div
-                    ref={popoverRef}
-                    className={styles.popover}
-                    style={{ 
-                      // Display popover at viewport position (convert from stored document coords)
-                      left: popover.x - iframeScrollX, 
-                      top: popover.y - iframeScrollY 
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <textarea
-                      autoFocus
-                      placeholder="Add a comment..."
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                          handleSubmit();
-                      }}
-                    />
-                    <div className={styles.popoverActions}>
-                      <button
-                        className="btn btn-ghost py-1 px-3 text-sm"
-                        onClick={(e) => handleCancel(e)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        className="btn btn-primary py-1 px-3 text-sm"
-                        onClick={handleSubmit}
-                        disabled={submitting || !commentText.trim()}
-                      >
-                        {submitting ? "..." : "Post"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+
         </div>
       </div>
 
@@ -563,7 +617,7 @@ export default function ReviewInterface({
             </button>
 
             {isInboxExpanded && (
-              <div className="px-2 pb-4 space-y-3 max-h-[300px] overflow-y-auto">
+              <div className="px-2 pb-4 space-y-3">
                 {/* Action Needed Group */}
                 {pagesWithPending.length > 0 && (
                   <div className="space-y-1">
@@ -629,20 +683,7 @@ export default function ReviewInterface({
         )}
 
         <div className={styles.sidebarHeader}>
-          {/* Desktop Toggle Button */}
-          <button
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="hidden md:flex items-center justify-center p-2 hover:bg-white/5 rounded transition-colors text-[var(--text-1)] hover:text-white mb-2"
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              {isSidebarCollapsed ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-              )}
-            </svg>
-          </button>
+
           
           <div className={styles.toggleGroup}>
             <button

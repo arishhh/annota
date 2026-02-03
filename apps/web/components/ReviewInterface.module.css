@@ -61,8 +61,20 @@
     position: absolute;
     inset: 0;
     z-index: 100;
+    pointer-events: none;
+    /* Block-through by default */
+}
+
+.overlayPassive {
+    cursor: default;
+    background: transparent;
+}
+
+.overlayActive {
     cursor: crosshair;
-    background: rgba(5, 6, 8, 0.1);
+    background: rgba(0, 0, 0, 0.05);
+    pointer-events: auto;
+    /* Intercept clicks in comment mode */
 }
 
 /* Fallback */
@@ -168,6 +180,11 @@
     transition: transform var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
 }
 
+.pinActive {
+    z-index: 200;
+    /* Ensure active pin & tooltip are above everything */
+}
+
 .pin:hover,
 .pinActive {
     z-index: 160;
@@ -193,22 +210,30 @@
 /* Pin Tooltip */
 .pinTooltip {
     position: absolute;
-    bottom: 36px;
+    bottom: calc(100% + 12px);
     left: 50%;
     transform: translateX(-50%);
-    width: 240px;
+    width: max-content;
+    max-width: 380px;
     background: var(--bg-2);
     border: 1px solid var(--border-0);
-    padding: var(--s-3);
     border-radius: var(--r-md);
-    color: var(--text-0);
-    pointer-events: none;
+    padding: var(--s-3);
     box-shadow: var(--shadow-2);
+    z-index: 210;
+    pointer-events: none;
+    animation: fadeIn var(--dur-1) var(--ease);
     display: flex;
     flex-direction: column;
     gap: var(--s-1);
+}
+
+.tooltipMessage {
     font-size: 0.85rem;
-    animation: fadeIn var(--dur-1) var(--ease);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    color: var(--text-0);
 }
 
 .pinTooltip::after {
@@ -271,17 +296,14 @@
     flex-direction: column;
     z-index: 50;
     transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebarCollapsed {
-    width: 60px;
-}
-
-.sidebarCollapsed .sidebarHeader>*:not(button:first-child),
-.sidebarCollapsed .commentList,
-.sidebarCollapsed>div:not(.sidebarHeader) {
-    display: none;
+    width: 0;
+    border-left: none;
+    visibility: hidden;
 }
 
 .sidebarHeader {
@@ -329,8 +351,6 @@
 }
 
 .commentList {
-    flex: 1;
-    overflow-y: auto;
     padding: var(--s-6);
     /* Increased padding */
     display: flex;
@@ -341,7 +361,8 @@
 
 /* Comment Cards */
 .commentCard {
-    background: var(--bg-1);
+    background: var(--bg-2);
+    /* Deeper background for contrast */
     border: 1px solid var(--border-0);
     border-radius: var(--r-md);
     padding: var(--s-4);
@@ -349,7 +370,7 @@
     cursor: pointer;
     transition: all var(--dur-2) var(--ease);
     position: relative;
-    overflow: hidden;
+    height: auto;
 }
 
 .commentCard:hover {
@@ -405,8 +426,11 @@
 
 .message {
     color: var(--text-0);
-    line-height: 1.5;
-    font-size: 0.9rem;
+    line-height: 1.6;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .meta {

@@ -54,7 +54,11 @@
             source: SCRIPT_ID,
             type: 'scroll-update',
             scrollX: window.scrollX,
-            scrollY: window.scrollY
+            scrollY: window.scrollY,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            scrollWidth: document.documentElement.scrollWidth,
+            scrollHeight: document.documentElement.scrollHeight
         }, PARENT_ORIGIN);
         
         lastScrollX = window.scrollX;
@@ -71,9 +75,14 @@
         });
     }
 
+    function handleResize() {
+        handleScroll(); // Dimensions change usually affects layout/scroll
+    }
+
     sendHandshake();
     setInterval(checkUrlChange, 500);
     window.addEventListener('popstate', checkUrlChange);
     window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleResize, { passive: true });
 })();
 
