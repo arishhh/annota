@@ -66,6 +66,9 @@ export default function ReviewInterface({
 
   // Mobile State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Sidebar State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Iframe & Navigation State
   const [iframeSrc, setIframeSrc] = useState(project.baseUrl);
@@ -92,6 +95,10 @@ export default function ReviewInterface({
   const [isEmbedDetected, setIsEmbedDetected] = useState(false);
   const [isManualMode, setIsManualMode] = useState(true);
   const [currentPath, setCurrentPath] = useState("/");
+  
+  // --- Iframe Scroll Tracking ---
+  const [iframeScrollX, setIframeScrollX] = useState(0);
+  const [iframeScrollY, setIframeScrollY] = useState(0);
 
   const isPathValid = currentPath && currentPath.startsWith("/");
 
@@ -99,6 +106,13 @@ export default function ReviewInterface({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (!event.data || event.data.source !== "annota-embed") return;
+
+      // Handle scroll updates
+      if (event.data.type === "scroll-update") {
+        setIframeScrollX(event.data.scrollX ?? 0);
+        setIframeScrollY(event.data.scrollY ?? 0);
+        return;
+      }
 
       if (
         event.data.type === "handshake" ||
@@ -191,12 +205,19 @@ export default function ReviewInterface({
     }
 
     const rect = overlayRef.current.getBoundingClientRect();
-    const x = Math.round(e.clientX - rect.left);
-    const y = Math.round(e.clientY - rect.top);
+    // Get viewport coordinates
+    const vx = Math.round(e.clientX - rect.left);
+    const vy = Math.round(e.clientY - rect.top);
 
-    const clampedX = Math.max(0, Math.min(x, rect.width));
-    const clampedY = Math.max(0, Math.min(y, rect.height));
+    // Convert viewport → document space using iframe scroll offsets
+    const docX = vx + iframeScrollX;
+    const docY = vy + iframeScrollY;
 
+    // Use a large bounds for clamping to allow commenting on scrolled content
+    const clampedX = Math.max(0, docX);
+    const clampedY = Math.max(0, docY);
+
+    // Store document coordinates in popover (will be saved to DB)
     setPopover({ x: clampedX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
     setPrefilledText("");
@@ -391,44 +412,66 @@ export default function ReviewInterface({
           )}
 
           {iframeStatus !== "ERROR" &&
-            displayedComments.map((comment, i) => (
-              <div
-                key={comment.id}
-                className={`${styles.pin} ${activeCommentId === comment.id ? styles.pinActive : ""} ${comment.status === "RESOLVED" ? styles.pinResolved : ""}`}
-                style={{
-                  left: comment.clickX,
-                  top: comment.clickY,
-                  pointerEvents: commentMode ? "auto" : "none",
-                  display: filterStatus === comment.status ? "flex" : "none",
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveCommentId(comment.id);
-                  document
-                    .getElementById(`comment-${comment.id}`)
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+            displayedComments.map((comment, i) => {
+              // Convert document coordinates → viewport coordinates
+              const docX = comment.clickX;
+              const docY = comment.clickY;
+              const viewportX = docX - iframeScrollX;
+              const viewportY = docY - iframeScrollY;
 
-                  // Open mobile menu to show comment
-                  if (window.innerWidth <= 768) {
-                    setIsMobileMenuOpen(true);
-                  }
-                }}
-                onMouseEnter={() => setActiveCommentId(comment.id)}
-                onMouseLeave={() => setActiveCommentId(null)}
-              >
-                {i + 1}
-                {activeCommentId === comment.id && (
-                  <div className={styles.pinTooltip}>
-                    <span className={styles.tooltipStatus}>
-                      {PROJECT_STATUS_LABELS[comment.status] || comment.status}
-                    </span>
-                    <div className="line-clamp-3 overflow-hidden text-ellipsis">
-                      {comment.message}
+              // Get overlay dimensions for boundary check
+              const overlayRect = overlayRef.current?.getBoundingClientRect();
+              const overlayWidth = overlayRect?.width || 0;
+              const overlayHeight = overlayRect?.height || 0;
+
+              // Hide pins outside viewport (with 20px buffer)
+              const isOutsideViewport =
+                viewportX < -20 ||
+                viewportY < -20 ||
+                viewportX > overlayWidth + 20 ||
+                viewportY > overlayHeight + 20;
+
+              if (isOutsideViewport) return null;
+
+              return (
+                <div
+                  key={comment.id}
+                  className={`${styles.pin} ${activeCommentId === comment.id ? styles.pinActive : ""} ${comment.status === "RESOLVED" ? styles.pinResolved : ""}`}
+                  style={{
+                    left: viewportX,
+                    top: viewportY,
+                    pointerEvents: commentMode ? "auto" : "none",
+                    display: filterStatus === comment.status ? "flex" : "none",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveCommentId(comment.id);
+                    document
+                      .getElementById(`comment-${comment.id}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+                    // Open mobile menu to show comment
+                    if (window.innerWidth <= 768) {
+                      setIsMobileMenuOpen(true);
+                    }
+                  }}
+                  onMouseEnter={() => setActiveCommentId(comment.id)}
+                  onMouseLeave={() => setActiveCommentId(null)}
+                >
+                  {i + 1}
+                  {activeCommentId === comment.id && (
+                    <div className={styles.pinTooltip}>
+                      <span className={styles.tooltipStatus}>
+                        {PROJECT_STATUS_LABELS[comment.status] || comment.status}
+                      </span>
+                      <div className="line-clamp-3 overflow-hidden text-ellipsis">
+                        {comment.message}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
 
           {commentMode &&
             project.status !== "APPROVED" &&
@@ -449,7 +492,11 @@ export default function ReviewInterface({
                   <div
                     ref={popoverRef}
                     className={styles.popover}
-                    style={{ left: popover.x, top: popover.y }}
+                    style={{ 
+                      // Display popover at viewport position (convert from stored document coords)
+                      left: popover.x - iframeScrollX, 
+                      top: popover.y - iframeScrollY 
+                    }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <textarea
@@ -485,7 +532,7 @@ export default function ReviewInterface({
       </div>
 
       {/* Sidebar with Mobile Toggle Class */}
-      <div className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}>
+      <div className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''} ${isSidebarCollapsed ? styles.sidebarCollapsed : ''}`}>
 
         {/* Mobile Header in Menu */}
         <div className="md:hidden flex items-center justify-between p-4 border-b border-white/10 bg-[var(--bg-1)]">
@@ -582,6 +629,21 @@ export default function ReviewInterface({
         )}
 
         <div className={styles.sidebarHeader}>
+          {/* Desktop Toggle Button */}
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="hidden md:flex items-center justify-center p-2 hover:bg-white/5 rounded transition-colors text-[var(--text-1)] hover:text-white mb-2"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {isSidebarCollapsed ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              )}
+            </svg>
+          </button>
+          
           <div className={styles.toggleGroup}>
             <button
               className={`${styles.toggleTab} ${filterStatus === "OPEN" ? styles.toggleTabActive : ""}`}

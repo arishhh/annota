@@ -270,6 +270,18 @@
     display: flex;
     flex-direction: column;
     z-index: 50;
+    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+.sidebarCollapsed {
+    width: 60px;
+}
+
+.sidebarCollapsed .sidebarHeader>*:not(button:first-child),
+.sidebarCollapsed .commentList,
+.sidebarCollapsed>div:not(.sidebarHeader) {
+    display: none;
 }
 
 .sidebarHeader {

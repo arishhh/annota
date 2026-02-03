@@ -16,13 +16,13 @@ export default function AppHeader({ rightSlot, title, description, logoHref }: A
             width={0}
             height={0}
             sizes="100vw"
-            style={{ width: 'auto', height: '60px' }}
+            style={{ width: 'auto', height: '40px' }}
             className="rounded-2xl"
         />
     );
 
     return (
-        <header className="glass-panel sticky top-0 z-50 px-4 md:px-6 py-4 flex justify-between items-center rounded-none border-t-0 border-x-0 bg-[#0B0D12]/80 backdrop-blur-md">
+        <header className="glass-panel sticky top-0 z-50 h-[50px] px-4 md:px-6 py-2 flex justify-between items-center rounded-none border-t-0 border-x-0 bg-[#0B0D12]/80 backdrop-blur-md">
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                     {logoHref ? (

@@ -21,6 +21,9 @@
             href: window.location.href,
             path: window.location.pathname + window.location.search + window.location.hash
         }, PARENT_ORIGIN);
+        
+        // Send initial scroll position immediately after handshake
+        sendScrollUpdate();
     }
 
     let lastPath = window.location.pathname + window.location.search + window.location.hash;
@@ -39,7 +42,38 @@
         }
     }
 
+    // Scroll update with throttling
+    let scrollUpdatePending = false;
+    let lastScrollX = window.scrollX;
+    let lastScrollY = window.scrollY;
+
+    function sendScrollUpdate() {
+        if (window.parent === window) return;
+        
+        window.parent.postMessage({
+            source: SCRIPT_ID,
+            type: 'scroll-update',
+            scrollX: window.scrollX,
+            scrollY: window.scrollY
+        }, PARENT_ORIGIN);
+        
+        lastScrollX = window.scrollX;
+        lastScrollY = window.scrollY;
+    }
+
+    function handleScroll() {
+        if (scrollUpdatePending) return;
+        
+        scrollUpdatePending = true;
+        requestAnimationFrame(() => {
+            sendScrollUpdate();
+            scrollUpdatePending = false;
+        });
+    }
+
     sendHandshake();
     setInterval(checkUrlChange, 500);
     window.addEventListener('popstate', checkUrlChange);
+    window.addEventListener('scroll', handleScroll, { passive: true });
 })();
+
