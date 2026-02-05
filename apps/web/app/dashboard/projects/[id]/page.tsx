@@ -84,6 +84,26 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
         }
     };
 
+    const handleDeleteComment = async (commentId: string) => {
+        // Optimistic
+        const prevComments = [...comments];
+        setComments(prev => prev.filter(c => c.id !== commentId));
+
+        try {
+            const res = await fetch(`${apiBase}/comments/${commentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'x-owner-email': authEmail || ''
+                }
+            });
+            if (!res.ok) throw new Error("Failed to delete");
+            toast.success('Comment deleted');
+        } catch (e) {
+            toast.error('Failed to delete comment');
+            setComments(prevComments); // Revert
+        }
+    };
+
     const handleCreateComment = async (payload: { x: number; y: number; message: string; pageUrl: string }) => {
         if (!project?.feedbackLink?.token) return;
 
@@ -156,6 +176,7 @@ export default function ProjectDashboard({ params }: { params: { id: string } })
                     comments={comments}
                     onCreateComment={handleCreateComment}
                     onUpdateCommentStatus={handleUpdateStatus}
+                    onDeleteComment={handleDeleteComment}
                     onPathChange={handlePathChange}
                     onRequestApprovalClick={() => setShowApprovalModal(true)}
                 />

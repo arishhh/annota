@@ -26,7 +26,7 @@ export default function Home() {
     }, []);
 
     return (
-        <main className="min-h-screen flex flex-col bg-[var(--bg-0)] text-[var(--text-0)] overflow-x-hidden relative">
+        <main className="min-h-screen flex flex-col bg-[var(--bg-0)] text-[var(--text-0)] relative">
             {/* Background Gradients */}
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--accent-0)] opacity-[0.03] blur-[100px] rounded-full pointer-events-none"></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[var(--accent-1)] opacity-[0.03] blur-[100px] rounded-full pointer-events-none"></div>

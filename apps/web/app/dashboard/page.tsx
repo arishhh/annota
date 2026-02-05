@@ -145,6 +145,12 @@ export default function DashboardPage() {
         router.push('/');
     };
 
+    const handleCopyLink = (token: string) => {
+        const link = `${window.location.origin}/f/${token}`;
+        navigator.clipboard.writeText(link);
+        toast.success("Feedback link copied!");
+    };
+
     if (!authEmail) {
         return null;
     }
@@ -229,6 +235,15 @@ export default function DashboardPage() {
                                                     className="btn btn-secondary text-xs py-2 px-4 flex-1 md:flex-none text-center border-dashed hover:border-solid hover:border-[var(--accent-0)]/50 hover:bg-[var(--accent-0)]/5 hover:text-[var(--accent-0)] transition-all"
                                                 >
                                                     Request Approval
+                                                </button>
+                                            )}
+                                            {p.status !== 'APPROVED' && (
+                                                <button
+                                                    onClick={() => handleCopyLink(p.feedbackLink.token)}
+                                                    className="btn btn-secondary text-xs py-2 px-3 flex items-center justify-center"
+                                                    title="Copy Client Link"
+                                                >
+                                                    🔗
                                                 </button>
                                             )}
                                             <Link

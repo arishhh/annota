@@ -60,7 +60,7 @@ model Comment {
   projectId      String
   project        Project       @relation(fields: [projectId], references: [id])
   pageUrl        String
-  clickX         Int
+  clickX         Float
   clickY         Int
   screenshotUrl  String?
   message        String

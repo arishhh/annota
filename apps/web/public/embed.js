@@ -21,7 +21,7 @@
             href: window.location.href,
             path: window.location.pathname + window.location.search + window.location.hash
         }, PARENT_ORIGIN);
-        
+
         // Send initial scroll position immediately after handshake
         sendScrollUpdate();
     }
@@ -49,7 +49,7 @@
 
     function sendScrollUpdate() {
         if (window.parent === window) return;
-        
+
         window.parent.postMessage({
             source: SCRIPT_ID,
             type: 'scroll-update',
@@ -58,16 +58,17 @@
             innerWidth: window.innerWidth,
             innerHeight: window.innerHeight,
             scrollWidth: document.documentElement.scrollWidth,
-            scrollHeight: document.documentElement.scrollHeight
+            scrollHeight: document.documentElement.scrollHeight,
+            documentWidth: document.documentElement.scrollWidth
         }, PARENT_ORIGIN);
-        
+
         lastScrollX = window.scrollX;
         lastScrollY = window.scrollY;
     }
 
     function handleScroll() {
         if (scrollUpdatePending) return;
-        
+
         scrollUpdatePending = true;
         requestAnimationFrame(() => {
             sendScrollUpdate();

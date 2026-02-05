@@ -66,7 +66,7 @@ export default function ReviewInterface({
 
   // Mobile State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+
   // Sidebar State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -95,11 +95,12 @@ export default function ReviewInterface({
   const [isEmbedDetected, setIsEmbedDetected] = useState(false);
   const [isManualMode, setIsManualMode] = useState(true);
   const [currentPath, setCurrentPath] = useState("/");
-  
+
   // --- Iframe Scroll & Dimension Tracking ---
   const [iframeScrollX, setIframeScrollX] = useState(0);
   const [iframeScrollY, setIframeScrollY] = useState(0);
   const [iframeWidth, setIframeWidth] = useState(0);
+  const [iframeDocumentWidth, setIframeDocumentWidth] = useState(0);
   const [initialIframeWidths, setInitialIframeWidths] = useState<Record<string, number>>({});
 
   const isPathValid = currentPath && currentPath.startsWith("/");
@@ -115,6 +116,9 @@ export default function ReviewInterface({
         setIframeScrollY(event.data.scrollY ?? 0);
         if (event.data.innerWidth) {
           setIframeWidth(event.data.innerWidth);
+        }
+        if (event.data.documentWidth) {
+          setIframeDocumentWidth(event.data.documentWidth);
         }
         return;
       }
@@ -222,8 +226,13 @@ export default function ReviewInterface({
     const clampedX = Math.max(0, docX);
     const clampedY = Math.max(0, docY);
 
+    // Calculate Ratio for X
+    const currentDocWidth = iframeDocumentWidth || overlayRef.current?.scrollWidth || 0;
+    const ratioX = currentDocWidth > 0 ? clampedX / currentDocWidth : 0;
+
     // Store document coordinates in popover (will be saved to DB)
-    setPopover({ x: clampedX, y: clampedY, isOpen: true });
+    // We store X as RATIO, Y as ABSOLUTE PIXELS
+    setPopover({ x: ratioX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
     setPrefilledText("");
   };
@@ -282,7 +291,7 @@ export default function ReviewInterface({
     if (!overlayRef.current) return;
     const observer = new ResizeObserver(() => {
       // Trigger a light re-render to update pin positions
-      setIframeWidth(prev => prev); 
+      setIframeWidth(prev => prev);
     });
     observer.observe(overlayRef.current);
     return () => observer.disconnect();
@@ -300,23 +309,7 @@ export default function ReviewInterface({
         <AppHeader
           title={project?.name}
           logoHref={mode === 'agency' ? '/dashboard' : undefined}
-          leftSlot={
-            <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="hidden md:flex items-center justify-center p-2 hover:bg-white/10 rounded-lg transition-all text-[#00F3FF] border border-[#00F3FF]/20 bg-[#00F3FF]/5 hover:border-[#00F3FF]/50 shadow-[0_0_10px_rgba(0,243,255,0.05)]"
-              title={isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                {!isSidebarCollapsed && (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                )}
-                {isSidebarCollapsed && (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                )}
-              </svg>
-            </button>
-          }
+
           description={
             <div className="flex items-center gap-3">
               {/* Simplified Layout: Only path, cleaner visual */}
@@ -419,6 +412,23 @@ export default function ReviewInterface({
                     {commentMode ? "● Commenting" : "○ Comment"}
                   </button>
                 )}
+
+                {/* SIDEBAR TOGGLE - Moved to right */}
+                <button
+                  onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  className="hidden md:flex items-center justify-center p-2 hover:bg-white/10 rounded-lg transition-all text-[#00F3FF] border border-[#00F3FF]/20 bg-[#00F3FF]/5 hover:border-[#00F3FF]/50 shadow-[0_0_10px_rgba(0,243,255,0.05)] ml-2"
+                  title={isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    {!isSidebarCollapsed && (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    )}
+                    {isSidebarCollapsed && (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    )}
+                  </svg>
+                </button>
               </div>
             </div>
           }
@@ -461,18 +471,20 @@ export default function ReviewInterface({
                 let docX = comment.clickX;
                 let docY = comment.clickY;
 
-                // --- RESPONSIVE DRIFT COMPENSATION ---
-                // If the iframe width has changed since the pin was created (or the session started),
-                // and we assume the content is centered (common for most sites),
-                // we adjust the X coordinate based on the width delta / 2.
-                
-                // For now, we'll use the *first* width we saw for this project as the "baseline".
-                const baselineWidth = initialIframeWidths[project.id] || iframeWidth;
-                
-                // Only compensate if we have a valid baseline and current width
-                if (baselineWidth > 0 && iframeWidth > 0 && baselineWidth !== iframeWidth) {
-                  const widthDelta = iframeWidth - baselineWidth;
-                  docX = docX + (widthDelta / 2);
+                const currentDocWidth = iframeDocumentWidth || overlayRef.current?.scrollWidth || 0;
+
+                // CHECK: Is this a ratio-based comment?
+                if (comment.clickX <= 1) {
+                  // YES: Convert ratio to pixels based on CURRENT layout width
+                  docX = comment.clickX * currentDocWidth;
+                } else {
+                  // LEGACY: Absolute pixels. 
+                  // Apply responsive drift compensation only for legacy comments if needed.
+                  const baselineWidth = initialIframeWidths[project.id] || iframeWidth;
+                  if (baselineWidth > 0 && iframeWidth > 0 && baselineWidth !== iframeWidth) {
+                    const widthDelta = iframeWidth - baselineWidth;
+                    docX = docX + (widthDelta / 2);
+                  }
                 }
 
                 const viewportX = docX - iframeScrollX;
@@ -543,7 +555,32 @@ export default function ReviewInterface({
                       ref={popoverRef}
                       className={styles.popover}
                       style={{
-                        left: popover.x - iframeScrollX,
+                        left: (() => {
+                          const docWidth = iframeDocumentWidth || overlayRef.current?.scrollWidth || 0;
+                          const overlayWidth = overlayRef.current?.clientWidth || 0;
+
+                          // 1. Calculate ideal pixel position relative to overlay
+                          let px = popover.x <= 1
+                            ? popover.x * docWidth
+                            : popover.x;
+
+                          // 2. Adjust for scroll to get viewport-relative X
+                          let vx = px - iframeScrollX;
+
+                          // 3. Clamp to keep popover fully onscreen
+                          // Popover width ~320px, so half-width is 160px.
+                          // We want center (vx) to be between 160px and (overlayWidth - 160px).
+                          const HALF_WIDTH = 160;
+                          const PADDING = 20;
+
+                          // If overlay is too narrow (mobile), just center it? 
+                          // But assuming desktop for side-by-side commenting usually.
+                          if (overlayWidth > (HALF_WIDTH * 2)) {
+                            vx = Math.max(HALF_WIDTH + PADDING, Math.min(vx, overlayWidth - HALF_WIDTH - PADDING));
+                          }
+
+                          return vx;
+                        })(),
                         top: popover.y - iframeScrollY,
                         pointerEvents: "auto",
                       }}
@@ -684,7 +721,7 @@ export default function ReviewInterface({
 
         <div className={styles.sidebarHeader}>
 
-          
+
           <div className={styles.toggleGroup}>
             <button
               className={`${styles.toggleTab} ${filterStatus === "OPEN" ? styles.toggleTabActive : ""}`}
@@ -781,6 +818,8 @@ export default function ReviewInterface({
                           ↺ Reopen
                         </button>
                       )}
+
+
                     </div>
                   )}
                 </div>
