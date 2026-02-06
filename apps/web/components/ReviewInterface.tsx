@@ -41,6 +41,7 @@ interface ReviewInterfaceProps {
     commentId: string,
     status: "OPEN" | "RESOLVED",
   ) => Promise<void>;
+  onDeleteComment?: (commentId: string) => Promise<void>;
   onPathChange?: (path: string) => void;
   onRequestApprovalClick?: () => void;
 }
@@ -51,6 +52,7 @@ export default function ReviewInterface({
   comments,
   onCreateComment,
   onUpdateCommentStatus,
+  onDeleteComment,
   onPathChange,
   onRequestApprovalClick,
 }: ReviewInterfaceProps) {
@@ -816,6 +818,21 @@ export default function ReviewInterface({
                           }}
                         >
                           ↺ Reopen
+                        </button>
+                      )}
+
+                      {onDeleteComment && (
+                        <button
+                           className="text-red-500/50 hover:text-red-500 p-1 ml-1 transition-colors"
+                           title="Delete"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             if (window.confirm('Are you sure you want to delete this comment?')) {
+                                onDeleteComment(c.id);
+                             }
+                           }}
+                        >
+                          ✕
                         </button>
                       )}
 
