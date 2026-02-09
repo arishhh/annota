@@ -226,47 +226,60 @@
     function getUniqueSelector(el) {
         if (!el || el.tagName === 'BODY' || el.tagName === 'HTML') return null;
         
-        // 1. Try ID
+        // 1. Try ID (High Priority)
         if (el.id) return '#' + el.id;
         
-        // 2. Try specific classes (check uniqueness)
+        // 2. Try Stable Attributes (data-*, aria-*, name, role)
+        const stableAttributes = ['data-testid', 'data-id', 'name', 'aria-label', 'role'];
+        for (const attr of stableAttributes) {
+            if (el.hasAttribute(attr)) {
+                const val = el.getAttribute(attr);
+                if (val) {
+                    const selector = `[${attr}="${val.replace(/"/g, '\\"')}"]`;
+                    if (document.querySelectorAll(selector).length === 1) return selector;
+                }
+            }
+        }
+
+        // 3. Try Specific Classes (Medium Priority)
         if (el.className && typeof el.className === 'string' && el.className.trim()) {
              const classes = el.className.split(/\s+/).filter(c => 
-                !c.includes(':') && // Filter out Tailwind states (hover:, focus:, etc.)
-                !c.includes('/') && // Filter out fractional values (w-1/2) just in case
+                !c.includes(':') && 
+                !c.includes('/') && 
                 !['relative', 'absolute', 'flex', 'grid', 'block', 'hidden', 'w-full', 'h-full', 'transition-colors', 'duration-300', 'ease-in-out'].includes(c)
              );
              
              if (classes.length > 0) {
-                 // Try class combinations
                  try {
+                     // Try all classes first
                      const classSelector = el.tagName.toLowerCase() + '.' + classes.join('.');
-                     if (document.querySelectorAll(classSelector).length === 1) {
-                         return classSelector;
-                     }
+                     if (document.querySelectorAll(classSelector).length === 1) return classSelector;
                      
-                     // Try just the first specific class
-                     const singleClassSelector = el.tagName.toLowerCase() + '.' + classes[0];
-                     if (document.querySelectorAll(singleClassSelector).length === 1) {
-                         return singleClassSelector;
+                     // Try single class if unique
+                     for (const cls of classes) {
+                         const single = el.tagName.toLowerCase() + '.' + cls;
+                         if (document.querySelectorAll(single).length === 1) return single;
                      }
                  } catch (e) {
-                     // If selector generation fails (e.g. invalid chars), fall back
                      console.warn('[Annota Embed] Selector generation error:', e);
                  }
              }
         }
 
-        // 3. Fallback to full path
+        // 4. Fallback to Structural Path (Low Priority)
         let path = [];
         let current = el;
         while (current && current.tagName !== 'BODY' && current.tagName !== 'HTML') {
             let selector = current.tagName.toLowerCase();
             let parent = current.parentNode;
             if (parent) {
-                const updatedChildren = Array.from(parent.children);
-                const index = updatedChildren.indexOf(current);
-                selector += `:nth-child(${index + 1})`;
+                const children = Array.from(parent.children);
+                const sameTagSiblings = children.filter(c => c.tagName === current.tagName);
+                
+                if (sameTagSiblings.length > 1) {
+                    const index = children.indexOf(current);
+                    selector += `:nth-child(${index + 1})`;
+                }
             }
             path.unshift(selector);
             current = parent;
@@ -277,18 +290,26 @@
     function calculateAnchor(x, y) {
         // x, y are viewport coordinates passed from parent
         const el = document.elementFromPoint(x, y);
-        if (!el || el.id === 'annota-layer') return null; // Don't anchor to our own layer
+        if (!el || el.id === 'annota-layer') return null;
 
         const rect = el.getBoundingClientRect();
         const selector = getUniqueSelector(el);
         
-        console.log('[Annota Embed] Calculated Anchor:', { selector, tagName: el.tagName, x, y, rect });
+        // Calculate Percentage Offsets
+        // Clamp between 0 and 1 just in case, though clicks usually are inside
+        const offsetXPct = (x - rect.left) / rect.width;
+        const offsetYPct = (y - rect.top) / rect.height;
+
+        console.log('[Annota Embed] Calculated Anchor:', { selector, tagName: el.tagName, offsetXPct, offsetYPct });
 
         return {
             selector,
-            offsetX: x - rect.left,
-            offsetY: y - rect.top,
-            tagName: el.tagName
+            offsetXPct,
+            offsetYPct,
+            tagName: el.tagName,
+            // Fallback: Store original size to detect massive scaling issues if needed?
+            // width: rect.width,
+            // height: rect.height
         };
     }
 
@@ -305,28 +326,45 @@
             const el = document.getElementById('annota-pin-' + pin.id);
             if (!el) return;
 
-            // Try to find anchor
+            let newX, newY;
+            let anchored = false;
+
+            // Try to anchor
             if (pin.anchor && pin.anchor.selector) {
                 const anchorEl = document.querySelector(pin.anchor.selector);
                 if (anchorEl) {
                     const rect = anchorEl.getBoundingClientRect();
-                    // Add scroll offsets because layer is absolute at top:0 left:0 of document
-                    const docTop = rect.top + window.scrollY;
-                    const docLeft = rect.left + window.scrollX;
-                    
-                    const newX = docLeft + pin.anchor.offsetX;
-                    const newY = docTop + pin.anchor.offsetY;
-
-                    // ALWAYS LOG for debugging
-                    console.log(`[Annota Embed] Repositioning Pin ${pin.id} to`, newX, newY, 'Anchor Rect:', rect, 'Scroll:', window.scrollY, window.scrollX);
-
-                    el.style.left = newX + 'px';
-                    el.style.top = newY + 'px';
-                    return;
-                } else {
-                    console.warn(`[Annota Embed] Anchor element not found for pin ${pin.id}:`, pin.anchor.selector);
+                    // Basic bounds check to ensure element is visible/reasonable? 
+                    if (rect.width > 0 && rect.height > 0) {
+                        const docTop = rect.top + window.scrollY;
+                        const docLeft = rect.left + window.scrollX;
+                        
+                        // Use Percentage if available, otherwise absolute offset (backward compat)
+                        if (pin.anchor.offsetXPct !== undefined) {
+                            newX = docLeft + (rect.width * pin.anchor.offsetXPct);
+                            newY = docTop + (rect.height * pin.anchor.offsetYPct);
+                        } else {
+                             // Fallback for old pins
+                            newX = docLeft + (pin.anchor.offsetX || 0);
+                            newY = docTop + (pin.anchor.offsetY || 0);
+                        }
+                        anchored = true;
+                    }
                 }
             }
+
+            // Fallback to absolute doc coordinates if anchoring failed
+            if (!anchored) {
+                newX = pin.x;
+                newY = pin.y;
+                // Maybe add visual indicator that pin is "detached"?
+                el.style.opacity = '0.7'; 
+            } else {
+                el.style.opacity = '1';
+            }
+
+            el.style.left = newX + 'px';
+            el.style.top = newY + 'px';
         });
     }
 
@@ -344,7 +382,7 @@
             el.id = 'annota-pin-' + pin.id;
             el.className = `annota-pin ${pin.status === 'RESOLVED' ? 'resolved' : ''} ${pin.active ? 'active' : ''}`;
             
-            // Initial Position (will be updated by repositionPins immediately if anchor exists)
+            // Initial render: blindly use passed x/y, then immediately reposition
             el.style.left = pin.x + 'px';
             el.style.top = pin.y + 'px';
             
@@ -369,52 +407,49 @@
         });
 
         // Run initial reposition to snap to anchors
-        repositionPins();
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(repositionPins);
     }
 
     // --- Event Listeners for Repositioning ---
     function onResizeOrScroll() {
-       // console.log('[Annota Embed] Resize/Scroll detected, repositioning...');
        handleScroll(); 
        repositionPins();
     }
 
     window.addEventListener('resize', onResizeOrScroll);
     window.addEventListener('scroll', onResizeOrScroll, { passive: true });
-    
+    window.addEventListener('orientationchange', onResizeOrScroll); // Mobile rotation
+    window.addEventListener('load', onResizeOrScroll); // Late loads
+
     // Also use ResizeObserver for body/html size changes
     const resizeObserver = new ResizeObserver((entries) => {
-        console.log('[Annota Embed] ResizeObserver trigger:', entries.length, 'entries');
         handleResize();
         repositionPins();
     });
     resizeObserver.observe(document.body);
     resizeObserver.observe(document.documentElement);
 
-    // POLLING FALLBACK: Force reposition every second just in case
-    setInterval(() => {
-        if (activePins.length > 0) repositionPins();
-    }, 1000);
+    // Initial check
+    setTimeout(repositionPins, 500);
 
-    // Message Listener
+    // --- Message Listener ---
     window.addEventListener('message', (event) => {
         if (!event.data) return;
 
         if (event.data.type === 'render-pins') {
-            console.log('[Annota Embed] Rendering Pins (Count: ' + event.data.pins.length + ')', event.data.pins);
             renderPins(event.data.pins);
         }
         
         if (event.data.type === 'request-anchor') {
              const { x, y } = event.data;
              const anchor = calculateAnchor(x, y);
-             console.log('[Annota Embed] Calculated anchor:', anchor);
              
              window.parent.postMessage({
                 source: SCRIPT_ID,
                 type: 'anchor-found',
                 anchor,
-                x, y // Echo back for context
+                x, y 
              }, PARENT_ORIGIN);
         }
     });
