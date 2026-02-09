@@ -67,6 +67,9 @@ export default function ReviewInterface({
   const [filterStatus, setFilterStatus] = useState<"OPEN" | "RESOLVED">("OPEN");
   const [prefilledText, setPrefilledText] = useState("");
   const [isInboxExpanded, setIsInboxExpanded] = useState(true);
+  
+  // Device Mode State
+  const [deviceMode, setDeviceMode] = useState<"desktop" | "tablet" | "mobile">("desktop");
 
   // Mobile State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -265,7 +268,7 @@ export default function ReviewInterface({
 
   // --- Interaction Handlers ---
   const handleOverlayClick = (e: React.MouseEvent) => {
-    if (!commentMode || !overlayRef.current) return;
+    if (!commentMode || !overlayRef.current || !iframeRef.current) return;
 
     if (isManualMode && !isPathValid) {
       return;
@@ -276,34 +279,36 @@ export default function ReviewInterface({
       return;
     }
 
-    const rect = overlayRef.current.getBoundingClientRect();
-    // Get viewport coordinates
-    const vx = Math.round(e.clientX - rect.left);
-    const vy = Math.round(e.clientY - rect.top);
+    // FIX: Use iframe rect for accurate anchor detection
+    const iframeRect = iframeRef.current.getBoundingClientRect();
+    const overlayRect = overlayRef.current.getBoundingClientRect();
+    
+    // Get viewport coordinates relative to iframe (for anchor detection)
+    const vx = Math.round(e.clientX - iframeRect.left);
+    const vy = Math.round(e.clientY - iframeRect.top);
 
-    // Convert viewport → document space using iframe scroll offsets
-    const docX = vx + iframeScrollX;
-    const docY = vy + iframeScrollY;
+    // Get coordinates relative to overlay (for popover positioning)
+    const overlayVx = Math.round(e.clientX - overlayRect.left);
+    const overlayVy = Math.round(e.clientY - overlayRect.top);
+
+    // Convert overlay viewport → document space using iframe scroll offsets
+    const docX = overlayVx + iframeScrollX;
+    const docY = overlayVy + iframeScrollY;
 
     // Use a large bounds for clamping to allow commenting on scrolled content
     const clampedX = Math.max(0, docX);
     const clampedY = Math.max(0, docY);
 
-    // ANCHOR LOGIC:
-    // 1. Send request to iframe to identify element at these VIEWPORT coordinates
+    // ANCHOR LOGIC: Send IFRAME-BASED coordinates for accurate element detection
     if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage({
             type: 'request-anchor',
-            x: vx, 
+            x: vx,  // Iframe-relative coordinates
             y: vy
         }, '*');
     }
 
-    // 2. Optimistically open popover at clicked position (fallback)
-    // We will update this with anchor data when 'anchor-found' comes back (async)
-    // For now, store a temporary "pending" state or just use the coords.
-    
-    // We'll store the raw click for now. When `anchor-found` arrives, we'll update the "pending anchor" ref or state.
+    // Open popover at clicked position (using overlay/document coordinates)
     setPopover({ x: clampedX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
     setPrefilledText("");
@@ -386,7 +391,13 @@ export default function ReviewInterface({
   const pendingTotal = comments.filter(c => c.status === 'OPEN').length;
 
   return (
-    <div className={styles.pageContainer}>
+    <div 
+      className={styles.pageContainer}
+      style={{
+        // Dynamic sidebar variable for CSS calc()
+        "--sidebar-width": isSidebarCollapsed ? "0px" : "380px",
+      } as React.CSSProperties}
+    >
       <div className={styles.mainArea}>
         <AppHeader
           title={project?.name}
@@ -441,6 +452,31 @@ export default function ReviewInterface({
                   </span>
                 )}
               </button>
+
+              {/* DEVICE TOGGLE (Desktop Only Visually) */}
+              <div className="hidden md:flex items-center bg-white/5 rounded-lg p-1 border border-white/10 mr-4">
+                 <button 
+                   onClick={() => setDeviceMode("desktop")}
+                   className={`p-1.5 rounded ${deviceMode === "desktop" ? "bg-[var(--accent-0)] text-black shadow-sm" : "text-[var(--text-1)] hover:text-white"}`}
+                   title="Desktop Mode"
+                 >
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                 </button>
+                 <button 
+                   onClick={() => setDeviceMode("tablet")}
+                    className={`p-1.5 rounded ${deviceMode === "tablet" ? "bg-[var(--accent-0)] text-black shadow-sm" : "text-[var(--text-1)] hover:text-white"}`}
+                   title="Tablet Mode"
+                 >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                 </button>
+                 <button 
+                   onClick={() => setDeviceMode("mobile")}
+                    className={`p-1.5 rounded ${deviceMode === "mobile" ? "bg-[var(--accent-0)] text-black shadow-sm" : "text-[var(--text-1)] hover:text-white"}`}
+                   title="Mobile Mode"
+                 >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                 </button>
+              </div>
 
               {/* DESKTOP ACTIONS */}
               <div className="hidden md:flex items-center gap-3">
@@ -517,7 +553,13 @@ export default function ReviewInterface({
         />
 
         <div className={styles.previewContainer}>
-          <div className={styles.viewport}>
+          <div 
+            className={styles.viewport}
+            style={{
+               width: deviceMode === "desktop" ? "calc(100vw - var(--sidebar-width))" : deviceMode === "tablet" ? "768px" : "375px",
+               transition: "width 0.3s ease"
+            }}
+          >
             <iframe
               ref={iframeRef}
             src={iframeSrc}
@@ -542,6 +584,9 @@ export default function ReviewInterface({
               </a>
             </div>
           )}
+
+
+
 
           {iframeStatus !== "ERROR" && (
             <div
@@ -569,7 +614,7 @@ export default function ReviewInterface({
 
                           // 1. Calculate ideal pixel position relative to overlay
                           // Popover X is now stored as ABSOLUTE (pixels) or RATIO (if legacy < 1)
-                          // But new comments are absolute.
+                          // But new comments are absolute (or ratio converted to absolute).
                           let px = popover.x <= 1 && popover.x > 0
                             ? popover.x * docWidth
                             : popover.x;
@@ -578,8 +623,6 @@ export default function ReviewInterface({
                           let vx = px - iframeScrollX;
 
                           // 3. Clamp to keep popover fully onscreen
-                          // Popover width ~320px, so half-width is 160px.
-                          // We want center (vx) to be between 160px and (overlayWidth - 160px).
                           const HALF_WIDTH = 160;
                           const PADDING = 20;
 
@@ -625,8 +668,6 @@ export default function ReviewInterface({
               )}
             </div>
           )}
-
-
           </div>
         </div>
       </div>
