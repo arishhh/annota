@@ -306,9 +306,8 @@ export default function ReviewInterface({
     const clampedX = Math.max(0, docX);
     const clampedY = Math.max(0, docY);
 
-    // UPDATED: Store as ABSOLUTE PIXELS as requested
-    // "Key requirement: pin coordinates must be stored as iframe document coordinates (docX/docY)"
-    // No longer converting to ratio for new comments.
+    // Note: We clamp here and store absolute pixels for the Popover UI.
+    // handleSubmit will convert X to ratio before saving.
 
     setPopover({ x: clampedX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
@@ -332,8 +331,13 @@ export default function ReviewInterface({
 
     setSubmitting(true);
     try {
+      // FIX: Save X as RATIO for responsive alignment
+      // Popover.x is absolute for UI display, but we save ratio to DB
+      const currentDocWidth = iframeDocumentWidth || iframeWidth || 1200;
+      const ratioX = popover.x / currentDocWidth;
+
       await onCreateComment({
-        x: popover.x,
+        x: ratioX,
         y: popover.y,
         message: commentText,
         pageUrl: currentPath,
@@ -490,37 +494,6 @@ export default function ReviewInterface({
                     {commentMode ? "● Commenting" : "○ Comment"}
                   </button>
                 )}
-
-                {/* DEBUG: SYNC PIN BUTTON */}
-                <button 
-                    className="px-2 py-1 bg-red-500/20 text-red-400 text-[10px] rounded border border-red-500/50 mr-2"
-                    onClick={() => {
-                        console.log('[ReviewInterface] Manual Sync Clicked');
-                        if (iframeRef.current?.contentWindow) {
-                            const pins = comments
-                                .filter(c => c.status === filterStatus && c.pageUrl === currentPath)
-                                .map((comment, index) => {
-                                    const currentDocWidth = iframeDocumentWidth || iframeWidth || 1200;
-                                    let docX = comment.clickX <= 1 ? comment.clickX * currentDocWidth : comment.clickX;
-                                    return {
-                                        id: comment.id,
-                                        x: docX,
-                                        y: comment.clickY,
-                                        status: comment.status,
-                                        number: index + 1,
-                                        message: comment.message,
-                                        active: activeCommentId === comment.id
-                                    };
-                                });
-                            console.log('[ReviewInterface] Manually sending:', pins);
-                            iframeRef.current.contentWindow.postMessage({ type: 'render-pins', pins }, '*');
-                        } else {
-                            console.error('[ReviewInterface] Iframe ref missing');
-                        }
-                    }}
-                >
-                    SYNC
-                </button>
 
                 {/* SIDEBAR TOGGLE - Moved to right */}
                 <button

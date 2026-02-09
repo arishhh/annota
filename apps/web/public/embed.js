@@ -1,6 +1,5 @@
 (function () {
     const SCRIPT_ID = 'annota-embed';
-    console.log('[Annota Embed] VERSION: LOCAL_DEV_V1 (Red Border Edition)');
 
     if (window.__annota_initialized) return;
     window.__annota_initialized = true;
@@ -27,7 +26,6 @@
                 pointer-events: none;
                 z-index: 99999;
                 overflow: visible;
-                border: 2px solid red; /* DEBUG: VISIBLE LAYER BOUNDARY */
             }
             .annota-pin {
                 position: absolute;
