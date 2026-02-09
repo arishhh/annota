@@ -25,6 +25,7 @@ type Comment = {
   clickX: number;
   clickY: number;
   pageUrl?: string; // Optional for backward partial compatibility
+  anchor?: any; // New anchor data (selector + offset)
 };
 
 interface ReviewInterfaceProps {
@@ -36,6 +37,7 @@ interface ReviewInterfaceProps {
     y: number;
     message: string;
     pageUrl: string;
+    anchor?: any;
   }) => Promise<void>;
   onUpdateCommentStatus?: (
     commentId: string,
@@ -92,6 +94,9 @@ export default function ReviewInterface({
   const overlayRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  
+  // Pending anchor data from iframe (selector + offset)
+  const pendingAnchorRef = useRef<any>(null);
 
   // --- Page Scope Logic ---
   const [isEmbedDetected, setIsEmbedDetected] = useState(false);
@@ -151,7 +156,7 @@ export default function ReviewInterface({
         console.log('[ReviewInterface] Message received:', event.data);
         
         if (event.data.type === "render-confirmed") {
-            toast.success(`Iframe confirmed rendering ${event.data.count} pins!`);
+            // toast.success(`Iframe confirmed rendering ${event.data.count} pins!`);
             return;
         }
         if (!isEmbedDetected) {
@@ -176,6 +181,11 @@ export default function ReviewInterface({
              // But displayedComments isn't in scope of this effect if we use the closure?
              // Ah, this effect has `currentPath` dep.
         }, 500);
+      }
+      
+      if (event.data.type === "anchor-found") {
+          console.log('[ReviewInterface] Anchor found:', event.data.anchor);
+          pendingAnchorRef.current = event.data.anchor;
       }
     };
 
@@ -242,7 +252,8 @@ export default function ReviewInterface({
         status: comment.status,
         number: index + 1,
         message: comment.message,
-        active: activeCommentId === comment.id
+        active: activeCommentId === comment.id,
+        anchor: comment.anchor // Pass anchor data to iframe
       };
     });
 
@@ -306,12 +317,27 @@ export default function ReviewInterface({
     const clampedX = Math.max(0, docX);
     const clampedY = Math.max(0, docY);
 
-    // Note: We clamp here and store absolute pixels for the Popover UI.
-    // handleSubmit will convert X to ratio before saving.
+    // ANCHOR LOGIC:
+    // 1. Send request to iframe to identify element at these VIEWPORT coordinates
+    if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({
+            type: 'request-anchor',
+            x: vx, 
+            y: vy
+        }, '*');
+    }
 
+    // 2. Optimistically open popover at clicked position (fallback)
+    // We will update this with anchor data when 'anchor-found' comes back (async)
+    // For now, store a temporary "pending" state or just use the coords.
+    
+    // We'll store the raw click for now. When `anchor-found` arrives, we'll update the "pending anchor" ref or state.
     setPopover({ x: clampedX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
     setPrefilledText("");
+    
+    // Clear any previous pending anchor
+    pendingAnchorRef.current = null;
   };
 
   const handleCancel = (e?: React.MouseEvent) => {
@@ -341,6 +367,7 @@ export default function ReviewInterface({
         y: popover.y,
         message: commentText,
         pageUrl: currentPath,
+        anchor: pendingAnchorRef.current
       });
       handleCancel();
       setFilterStatus("OPEN");
@@ -350,6 +377,7 @@ export default function ReviewInterface({
       );
     } finally {
       setSubmitting(false);
+      pendingAnchorRef.current = null;
     }
   };
 

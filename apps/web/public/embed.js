@@ -220,22 +220,113 @@
         }
     }
 
+    // --- Anchor Logic ---
+    function getUniqueSelector(el) {
+        if (!el || el.tagName === 'BODY' || el.tagName === 'HTML') return null;
+        if (el.id) return '#' + el.id;
+        
+        // Try class names if they look specific enough (not generic layout classes)
+        if (el.className && typeof el.className === 'string' && el.className.trim()) {
+             const classes = el.className.split(/\s+/).filter(c => !c.includes('hover') && !c.includes('active'));
+             if (classes.length > 0) {
+                 // specific check could go here, for now just use first class
+                 return el.tagName.toLowerCase() + '.' + classes[0];
+             }
+        }
+
+        // Fallback to nth-child path
+        let path = [];
+        while (el && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+            let selector = el.tagName.toLowerCase();
+            let parent = el.parentNode;
+            if (parent) {
+                const updatedChildren = Array.from(parent.children);
+                const index = updatedChildren.indexOf(el);
+                selector += `:nth-child(${index + 1})`;
+            }
+            path.unshift(selector);
+            el = parent;
+        }
+        return path.join(' > ');
+    }
+
+    function calculateAnchor(x, y) {
+        // x, y are viewport coordinates passed from parent
+        const el = document.elementFromPoint(x, y);
+        if (!el || el.id === 'annota-layer') return null; // Don't anchor to our own layer
+
+        const rect = el.getBoundingClientRect();
+        const selector = getUniqueSelector(el);
+        
+        console.log('[Annota Embed] Calculated Anchor:', { selector, tagName: el.tagName, x, y, rect });
+
+        return {
+            selector,
+            offsetX: x - rect.left,
+            offsetY: y - rect.top,
+            tagName: el.tagName
+        };
+    }
+
+    // --- Repositioning ---
+    let activePins = [];
+
+    function repositionPins() {
+        if (!activePins.length) return;
+        
+        const layer = document.getElementById('annota-layer');
+        if (!layer) return;
+
+        activePins.forEach(pin => {
+            const el = document.getElementById('annota-pin-' + pin.id);
+            if (!el) return;
+
+            // Try to find anchor
+            if (pin.anchor && pin.anchor.selector) {
+                const anchorEl = document.querySelector(pin.anchor.selector);
+                if (anchorEl) {
+                    const rect = anchorEl.getBoundingClientRect();
+                    // Add scroll offsets because layer is absolute at top:0 left:0 of document
+                    const docTop = rect.top + window.scrollY;
+                    const docLeft = rect.left + window.scrollX;
+                    
+                    const newX = docLeft + pin.anchor.offsetX;
+                    const newY = docTop + pin.anchor.offsetY;
+
+                    // Only log if position changed significantly to avoid spam
+                    // const oldLeft = parseFloat(el.style.left);
+                    // if (Math.abs(oldLeft - newX) > 1) {
+                    //    console.log(`[Annota Embed] Repositioning Pin ${pin.id} to`, newX, newY, 'Anchor:', pin.anchor.selector);
+                    // }
+
+                    el.style.left = newX + 'px';
+                    el.style.top = newY + 'px';
+                    return;
+                } else {
+                    console.warn(`[Annota Embed] Anchor element not found for pin ${pin.id}:`, pin.anchor.selector);
+                }
+            }
+        });
+    }
+
     function renderPins(pins) {
         console.log('[Annota Embed] renderPins called with:', pins);
-        injectStyles(); // Ensure styles exist
+        injectStyles();
         const layer = getOrCreateLayer();
-        layer.innerHTML = ''; // Clear existing pins
+        layer.innerHTML = ''; 
+        activePins = pins; // Store for repositioning
 
-        if (!pins || !Array.isArray(pins)) {
-            console.warn('[Annota Embed] Invalid pins data:', pins);
-            return;
-        }
+        if (!pins || !Array.isArray(pins)) return;
 
         pins.forEach(pin => {
             const el = document.createElement('div');
+            el.id = 'annota-pin-' + pin.id;
             el.className = `annota-pin ${pin.status === 'RESOLVED' ? 'resolved' : ''} ${pin.active ? 'active' : ''}`;
+            
+            // Initial Position (will be updated by repositionPins immediately if anchor exists)
             el.style.left = pin.x + 'px';
             el.style.top = pin.y + 'px';
+            
             el.innerHTML = `
                 ${pin.number}
                 <div class="annota-tooltip">
@@ -255,36 +346,56 @@
 
             layer.appendChild(el);
         });
-        console.log('[Annota Embed] Pins rendered to layer:', layer);
-        
-        // Confirm to parent
-        window.parent.postMessage({
-            source: SCRIPT_ID,
-            type: 'render-confirmed',
-            count: pins.length
-        }, PARENT_ORIGIN);
+
+        // Run initial reposition to snap to anchors
+        repositionPins();
     }
 
     // Message Listener
     window.addEventListener('message', (event) => {
-        // Basic security check: ensure it comes from parent if we can contextually know it,
-        // but since this is an embed script, we might be loose or rely on data-annota-parent-origin logic.
-        // For now, checks if we have a type we care about.
         if (!event.data) return;
 
         if (event.data.type === 'render-pins') {
-            console.log('[Annota Embed] Received render-pins message');
+            console.log('[Annota Embed] Rendering Pins (Count: ' + event.data.pins.length + ')', event.data.pins);
             renderPins(event.data.pins);
+        }
+        
+        if (event.data.type === 'request-anchor') {
+             const { x, y } = event.data;
+             // Remove our layer pointer events temporarily to click through? 
+             // Actually document.elementFromPoint hits top element. 
+             // Parent handles overlay instructions, so we just need to ensure annota-layer passes through.
+             // It does (pointer-events: none).
+
+             const anchor = calculateAnchor(x, y);
+             console.log('[Annota Embed] Calculated anchor:', anchor);
+             
+             window.parent.postMessage({
+                source: SCRIPT_ID,
+                type: 'anchor-found',
+                anchor,
+                x, y // Echo back for context
+             }, PARENT_ORIGIN);
         }
     });
 
     console.log('[Annota Embed] Initializing...');
     sendHandshake();
-    injectStyles(); // Inject immediately
+    injectStyles();
 
     setInterval(checkUrlChange, 500);
     window.addEventListener('popstate', checkUrlChange);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleResize, { passive: true });
+    
+    // Reposition triggers
+    window.addEventListener('scroll', () => { handleScroll(); }, { passive: true });
+    window.addEventListener('resize', () => { handleResize(); repositionPins(); }, { passive: true }); // Window resize
+    
+    // ResizeObserver for body height changes (layout shifts)
+    const resizeObserver = new ResizeObserver(() => {
+        handleResize(); // updates layer height
+        repositionPins();
+    });
+    resizeObserver.observe(document.body);
+    
 })();
 
