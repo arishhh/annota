@@ -317,11 +317,8 @@
                     const newX = docLeft + pin.anchor.offsetX;
                     const newY = docTop + pin.anchor.offsetY;
 
-                    // Only log if position changed significantly to avoid spam
-                    // const oldLeft = parseFloat(el.style.left);
-                    // if (Math.abs(oldLeft - newX) > 1) {
-                    //    console.log(`[Annota Embed] Repositioning Pin ${pin.id} to`, newX, newY, 'Anchor:', pin.anchor.selector);
-                    // }
+                    // ALWAYS LOG for debugging
+                    console.log(`[Annota Embed] Repositioning Pin ${pin.id} to`, newX, newY, 'Anchor Rect:', rect, 'Scroll:', window.scrollY, window.scrollX);
 
                     el.style.left = newX + 'px';
                     el.style.top = newY + 'px';
@@ -377,6 +374,7 @@
 
     // --- Event Listeners for Repositioning ---
     function onResizeOrScroll() {
+       // console.log('[Annota Embed] Resize/Scroll detected, repositioning...');
        handleScroll(); 
        repositionPins();
     }
