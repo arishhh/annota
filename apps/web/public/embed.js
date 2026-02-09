@@ -232,20 +232,27 @@
         // 2. Try specific classes (check uniqueness)
         if (el.className && typeof el.className === 'string' && el.className.trim()) {
              const classes = el.className.split(/\s+/).filter(c => 
-                !['relative', 'absolute', 'flex', 'grid', 'block', 'hidden', 'w-full', 'h-full', 'transition-colors'].includes(c)
+                !c.includes(':') && // Filter out Tailwind states (hover:, focus:, etc.)
+                !c.includes('/') && // Filter out fractional values (w-1/2) just in case
+                !['relative', 'absolute', 'flex', 'grid', 'block', 'hidden', 'w-full', 'h-full', 'transition-colors', 'duration-300', 'ease-in-out'].includes(c)
              );
              
              if (classes.length > 0) {
                  // Try class combinations
-                 const classSelector = el.tagName.toLowerCase() + '.' + classes.join('.');
-                 if (document.querySelectorAll(classSelector).length === 1) {
-                     return classSelector;
-                 }
-                 
-                 // Try just the first specific class
-                 const singleClassSelector = el.tagName.toLowerCase() + '.' + classes[0];
-                 if (document.querySelectorAll(singleClassSelector).length === 1) {
-                     return singleClassSelector;
+                 try {
+                     const classSelector = el.tagName.toLowerCase() + '.' + classes.join('.');
+                     if (document.querySelectorAll(classSelector).length === 1) {
+                         return classSelector;
+                     }
+                     
+                     // Try just the first specific class
+                     const singleClassSelector = el.tagName.toLowerCase() + '.' + classes[0];
+                     if (document.querySelectorAll(singleClassSelector).length === 1) {
+                         return singleClassSelector;
+                     }
+                 } catch (e) {
+                     // If selector generation fails (e.g. invalid chars), fall back
+                     console.warn('[Annota Embed] Selector generation error:', e);
                  }
              }
         }
