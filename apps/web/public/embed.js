@@ -382,12 +382,19 @@
     window.addEventListener('resize', onResizeOrScroll);
     window.addEventListener('scroll', onResizeOrScroll, { passive: true });
     
-    // Also use ResizeObserver for body size changes (e.g. sidebar open/close)
-    const resizeObserver = new ResizeObserver(() => {
+    // Also use ResizeObserver for body/html size changes
+    const resizeObserver = new ResizeObserver((entries) => {
+        console.log('[Annota Embed] ResizeObserver trigger:', entries.length, 'entries');
         handleResize();
         repositionPins();
     });
     resizeObserver.observe(document.body);
+    resizeObserver.observe(document.documentElement);
+
+    // POLLING FALLBACK: Force reposition every second just in case
+    setInterval(() => {
+        if (activePins.length > 0) repositionPins();
+    }, 1000);
 
     // Message Listener
     window.addEventListener('message', (event) => {
