@@ -206,6 +206,8 @@
 
     function handleResize() {
         handleScroll(); // Dimensions change usually affects layout/scroll
+        repositionPins(); // Reposition pins on resize
+        
         // Also update layer height on resize
         const layer = document.getElementById('annota-layer');
         if (layer) {
@@ -223,29 +225,44 @@
     // --- Anchor Logic ---
     function getUniqueSelector(el) {
         if (!el || el.tagName === 'BODY' || el.tagName === 'HTML') return null;
+        
+        // 1. Try ID
         if (el.id) return '#' + el.id;
         
-        // Try class names if they look specific enough (not generic layout classes)
+        // 2. Try specific classes (check uniqueness)
         if (el.className && typeof el.className === 'string' && el.className.trim()) {
-             const classes = el.className.split(/\s+/).filter(c => !c.includes('hover') && !c.includes('active'));
+             const classes = el.className.split(/\s+/).filter(c => 
+                !['relative', 'absolute', 'flex', 'grid', 'block', 'hidden', 'w-full', 'h-full', 'transition-colors'].includes(c)
+             );
+             
              if (classes.length > 0) {
-                 // specific check could go here, for now just use first class
-                 return el.tagName.toLowerCase() + '.' + classes[0];
+                 // Try class combinations
+                 const classSelector = el.tagName.toLowerCase() + '.' + classes.join('.');
+                 if (document.querySelectorAll(classSelector).length === 1) {
+                     return classSelector;
+                 }
+                 
+                 // Try just the first specific class
+                 const singleClassSelector = el.tagName.toLowerCase() + '.' + classes[0];
+                 if (document.querySelectorAll(singleClassSelector).length === 1) {
+                     return singleClassSelector;
+                 }
              }
         }
 
-        // Fallback to nth-child path
+        // 3. Fallback to full path
         let path = [];
-        while (el && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
-            let selector = el.tagName.toLowerCase();
-            let parent = el.parentNode;
+        let current = el;
+        while (current && current.tagName !== 'BODY' && current.tagName !== 'HTML') {
+            let selector = current.tagName.toLowerCase();
+            let parent = current.parentNode;
             if (parent) {
                 const updatedChildren = Array.from(parent.children);
-                const index = updatedChildren.indexOf(el);
+                const index = updatedChildren.indexOf(current);
                 selector += `:nth-child(${index + 1})`;
             }
             path.unshift(selector);
-            el = parent;
+            current = parent;
         }
         return path.join(' > ');
     }
@@ -351,6 +368,22 @@
         repositionPins();
     }
 
+    // --- Event Listeners for Repositioning ---
+    function onResizeOrScroll() {
+       handleScroll(); 
+       repositionPins();
+    }
+
+    window.addEventListener('resize', onResizeOrScroll);
+    window.addEventListener('scroll', onResizeOrScroll, { passive: true });
+    
+    // Also use ResizeObserver for body size changes (e.g. sidebar open/close)
+    const resizeObserver = new ResizeObserver(() => {
+        handleResize();
+        repositionPins();
+    });
+    resizeObserver.observe(document.body);
+
     // Message Listener
     window.addEventListener('message', (event) => {
         if (!event.data) return;
@@ -362,11 +395,6 @@
         
         if (event.data.type === 'request-anchor') {
              const { x, y } = event.data;
-             // Remove our layer pointer events temporarily to click through? 
-             // Actually document.elementFromPoint hits top element. 
-             // Parent handles overlay instructions, so we just need to ensure annota-layer passes through.
-             // It does (pointer-events: none).
-
              const anchor = calculateAnchor(x, y);
              console.log('[Annota Embed] Calculated anchor:', anchor);
              
@@ -385,17 +413,6 @@
 
     setInterval(checkUrlChange, 500);
     window.addEventListener('popstate', checkUrlChange);
-    
-    // Reposition triggers
-    window.addEventListener('scroll', () => { handleScroll(); }, { passive: true });
-    window.addEventListener('resize', () => { handleResize(); repositionPins(); }, { passive: true }); // Window resize
-    
-    // ResizeObserver for body height changes (layout shifts)
-    const resizeObserver = new ResizeObserver(() => {
-        handleResize(); // updates layer height
-        repositionPins();
-    });
-    resizeObserver.observe(document.body);
     
 })();
 
