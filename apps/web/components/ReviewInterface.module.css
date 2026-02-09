@@ -6,6 +6,8 @@
     overflow: hidden;
     background: var(--bg-0);
     color: var(--text-0);
+    /* Define sidebar width variable for calculation consistency */
+    --sidebar-width: 380px;
 }
 
 .mainArea {
@@ -44,251 +46,76 @@
 .previewContainer {
     flex: 1;
     position: relative;
-    background: #000;
+    background: #111;
+    /* Dark background to frame the centered iframe */
     overflow: hidden;
+    display: flex;
+    justify-content: center;
+    /* Center the iframe when sidebar is closed */
+    align-items: flex-start;
+    /* Default alignment */
+}
+
+.viewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    /* Transition for smooth window resizing, but instant for sidebar toggle? 
+       Actually, sidebar toggle is animated. We want viewport to STAY same width.
+       If sidebar animates, the "available space" grows. 
+       If viewport width is calc(100vw - 380px), it is Constant.
+       So it shouldn't animate width.
+    */
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+    background: #fff;
 }
 
 .iframe {
     width: 100%;
     height: 100%;
     border: none;
-    background: #fff;
     display: block;
+}
+
+/* Desktop: Stable Width Logic */
+@media (min-width: 769px) {
+    .viewport {
+        /* Fixed responsive width: window - sidebar */
+        width: calc(100vw - var(--sidebar-width));
+        max-width: 100%;
+    }
 }
 
 /* Overlay */
 .overlay {
     position: absolute;
-    inset: 0;
-    z-index: 100;
-    pointer-events: none;
-    /* Block-through by default */
-}
-
-.overlayPassive {
-    cursor: default;
-    background: transparent;
-}
-
-.overlayActive {
-    cursor: crosshair;
-    background: rgba(0, 0, 0, 0.05);
-    pointer-events: auto;
-    /* Intercept clicks in comment mode */
-}
-
-/* Fallback */
-.fallback {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-1);
-    color: var(--text-1);
-    text-align: center;
-    padding: var(--s-8);
-}
-
-/* Popover */
-.popover {
-    position: absolute;
-    z-index: 200;
-    width: 320px;
-    background: var(--bg-2);
-    border: 1px solid var(--border-0);
-    box-shadow: var(--shadow-2);
-    border-radius: var(--r-lg);
-    padding: var(--s-4);
-    transform: translate(-50%, 12px);
-    animation: popoverIn var(--dur-2) var(--ease);
-}
-
-@keyframes popoverIn {
-    from {
-        opacity: 0;
-        transform: translate(-50%, 4px) scale(0.98);
-    }
-
-    to {
-        opacity: 1;
-        transform: translate(-50%, 12px) scale(1);
-    }
-}
-
-.popover::before {
-    content: '';
-    position: absolute;
-    top: -6px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 6px solid transparent;
-    border-right: 6px solid transparent;
-    border-bottom: 6px solid var(--bg-2);
-}
-
-.popover textarea {
+    /* Match the calculated width and centering of the iframe */
     width: 100%;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-0);
-    border-radius: var(--r-md);
-    color: var(--text-0);
-    padding: var(--s-2) var(--s-3);
-    margin-bottom: var(--s-3);
-    min-height: 100px;
-    resize: none;
-    font-family: inherit;
-    font-size: 0.9rem;
-    transition: box-shadow var(--dur-1) var(--ease);
-}
+    height: 100%;
+    /* We need to be careful here: The overlay is absolute relative to previewContainer. 
+       If iframe is centered with a specific width, the overlay must match it. 
+       Actually, standard absolute inset:0 covers the CONTAINER.
+       But we want the pins to align with the IFRAME.
+    */
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
 
-.popover textarea:focus {
-    outline: none;
-    box-shadow: var(--focus-ring);
-    border-color: transparent;
-}
-
-.popoverActions {
+    /* Center content within overlay to match iframe centering */
     display: flex;
-    justify-content: flex-end;
-    gap: var(--s-2);
-}
-
-/* Pins */
-.pin {
-    position: absolute;
-    width: 28px;
-    height: 28px;
-    background: var(--accent-0);
-    border: 2px solid #fff;
-    /* White border for contrast against map/page */
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-    z-index: 150;
-    display: flex;
-    align-items: center;
     justify-content: center;
-    font-size: 11px;
-    font-weight: 800;
-    color: #000;
-    /* Dark text on Cyan */
-    transition: transform var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
 }
 
-.pinActive {
-    z-index: 200;
-    /* Ensure active pin & tooltip are above everything */
-}
+/* Wrapper for pins to match iframe dimensions */
+/* We'll adding a pseudo-element or wrapper logic isn't easy in pure CSS for existing pins.
+   However, since the iframe is just centered, we can leave overlay as inset:0 
+   and rely on the pins being positioned relative to the DOCUMENT coordinates ??
+   Wait, the pin coordinates are relative to the DOCUMENT inside the iframe?
+   No, previously we positioned them relative to the `overlay`.
+ */
 
-.pin:hover,
-.pinActive {
-    z-index: 160;
-    transform: translate(-50%, -50%) scale(1.1);
-    box-shadow: 0 0 16px var(--accent-glow);
-}
-
-/* Resolved Pin State */
-.pinResolved {
-    background: #444;
-    /* Neutral/Muted */
-    color: #ccc;
-    border-color: #888;
-    opacity: 0.6;
-    box-shadow: none;
-}
-
-.pinResolved:hover {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.05);
-}
-
-/* Pin Tooltip */
-.pinTooltip {
-    position: absolute;
-    bottom: calc(100% + 12px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: max-content;
-    max-width: 380px;
-    background: var(--bg-2);
-    border: 1px solid var(--border-0);
-    border-radius: var(--r-md);
-    padding: var(--s-3);
-    box-shadow: var(--shadow-2);
-    z-index: 210;
-    pointer-events: none;
-    animation: fadeIn var(--dur-1) var(--ease);
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-1);
-}
-
-.tooltipMessage {
-    font-size: 0.85rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
-    color: var(--text-0);
-}
-
-.pinTooltip::after {
-    content: '';
-    position: absolute;
-    bottom: -5px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 5px solid var(--bg-2);
-}
-
-.tooltipStatus {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--accent-0);
-    letter-spacing: 0.05em;
-}
-
-/* Helper Text */
-.helperText {
-    position: absolute;
-    top: var(--s-8);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-2);
-    border: 1px solid var(--accent-0);
-    padding: var(--s-2) var(--s-4);
-    border-radius: 99px;
-    color: var(--accent-0);
-    font-size: 0.9rem;
-    font-weight: 500;
-    pointer-events: none;
-    z-index: 110;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    animation: fadeIn var(--dur-2) var(--ease);
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -8px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translate(-50%, 0);
-    }
-}
-
-/* Sidebar */
 .sidebar {
-    width: 380px;
+    width: var(--sidebar-width);
     /* Slightly wider for comfort */
     border-left: 1px solid var(--border-0);
     background: var(--bg-1);

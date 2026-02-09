@@ -76,6 +76,8 @@ export default function ReviewInterface({
 
   // Iframe & Navigation State
   const [iframeSrc, setIframeSrc] = useState(project.baseUrl);
+  const [activePage, setActivePage] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState("/");
 
   // Popover State
   const [popover, setPopover] = useState<{
@@ -90,20 +92,9 @@ export default function ReviewInterface({
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Refs
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  
-  // Pending anchor data from iframe (selector + offset)
-  const pendingAnchorRef = useRef<any>(null);
-
-  // --- Page Scope Logic ---
+  // Layout State
   const [isEmbedDetected, setIsEmbedDetected] = useState(false);
   const [isManualMode, setIsManualMode] = useState(true);
-  const [currentPath, setCurrentPath] = useState("/");
-
-  // --- Iframe Scroll & Dimension Tracking ---
   const [iframeScrollX, setIframeScrollX] = useState(0);
   const [iframeScrollY, setIframeScrollY] = useState(0);
   const [iframeWidth, setIframeWidth] = useState(0);
@@ -112,129 +103,136 @@ export default function ReviewInterface({
 
   const isPathValid = currentPath && currentPath.startsWith("/");
 
+  // Refs
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const pendingAnchorRef = useRef<any>(null);
 
+  // -- Derived State for Commented Pages --
+  const commentedPages = comments.reduce((acc, comment) => {
+    const path = comment.pageUrl || "/"; 
+    if (!acc[path]) {
+      acc[path] = { path, pending: 0, total: 0 };
+    }
+    acc[path].total++;
+    if (comment.status === "OPEN") {
+      acc[path].pending++;
+    }
+    return acc;
+  }, {} as Record<string, { path: string; pending: number; total: number }>);
 
-  // Listen for Embed Script Messages
+  // Sort pages: pages with pending first, then by path
+  const sortedPages = Object.values(commentedPages).sort((a, b) => {
+    if (a.pending > 0 && b.pending === 0) return -1;
+    if (a.pending === 0 && b.pending > 0) return 1;
+    return a.path.localeCompare(b.path);
+  });
+
+  const pagesWithPending = sortedPages.filter(p => p.pending > 0);
+  const pagesResolvedOnly = sortedPages.filter(p => p.pending === 0);
+  const totalActionPages = pagesWithPending.length;
+
+  // Filter displayed comments based on activePage (currentPath)
+  const displayedComments = comments
+    .filter((c) => {
+      const cPath = c.pageUrl || "/";
+      if (c.status !== filterStatus) return false;
+      return cPath === currentPath; 
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Handler for switching pages
+  const handlePageClick = (path: string) => {
+    // 1. Update iframe src (if different)
+    const targetUrl = new URL(path, project.baseUrl).toString();
+    
+    // Only reload if actually different
+    if (currentPath !== path) {
+        setIframeSrc(targetUrl);
+        setIframeStatus("LOADING"); 
+    }
+    
+    setActivePage(path);
+    setCurrentPath(path);
+    setIsMobileMenuOpen(false);
+
+    // Auto-switch filter to show relevant comments
+    const pageStats = commentedPages[path];
+    if (pageStats?.pending > 0) {
+      setFilterStatus("OPEN");
+    } else if (pageStats?.total > 0) { // e.g. only resolved
+      setFilterStatus("RESOLVED");
+    }
+  };
+
+  // --- Message Handling (Consolidated) ---
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (!event.data || event.data.source !== "annota-embed") return;
 
-      // Handle scroll & dimension updates
+      // 1. Path Update
+      if (event.data.type === "path-update") {
+         const newPath = event.data.path;
+         if (newPath !== currentPath) {
+             setCurrentPath(newPath);
+             setActivePage(newPath);
+             if (onPathChange) onPathChange(newPath);
+         }
+      }
+
+      // 2. Scroll/Resize Update
       if (event.data.type === "scroll-update") {
         setIframeScrollX(event.data.scrollX ?? 0);
         setIframeScrollY(event.data.scrollY ?? 0);
-        if (event.data.innerWidth) {
-          setIframeWidth(event.data.innerWidth);
-        }
-        if (event.data.documentWidth) {
-          setIframeDocumentWidth(event.data.documentWidth);
-        }
-        return;
+        if (event.data.innerWidth) setIframeWidth(event.data.innerWidth);
+        if (event.data.documentWidth) setIframeDocumentWidth(event.data.documentWidth);
       }
 
-      // Handle Pin Clicks
+      // 3. Pin Clicked
       if (event.data.type === 'pin-clicked') {
         const cId = event.data.commentId;
         setActiveCommentId(cId);
-        
-        // Scroll sidebar
         const el = document.getElementById(`comment-${cId}`);
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        // Mobile handling
-        if (window.innerWidth <= 768) {
-             setIsMobileMenuOpen(true);
-        }
-        return;
+        if (window.innerWidth <= 768) setIsMobileMenuOpen(true);
       }
 
-      if (
-        event.data.type === "handshake" ||
-        event.data.type === "path-update" ||
-        event.data.type === "render-confirmed"
-      ) {
-        console.log('[ReviewInterface] Message received:', event.data);
-        
-        if (event.data.type === "render-confirmed") {
-            // toast.success(`Iframe confirmed rendering ${event.data.count} pins!`);
-            return;
+      // 4. Handshake / Render Confirmed
+      if (event.data.type === "handshake" || event.data.type === "render-confirmed") {
+        if (event.data.type === "handshake") {
+            const path = event.data.path || "/";
+            if (path !== currentPath) {
+                setCurrentPath(path);
+                if (onPathChange) onPathChange(path);
+            }
+            if (!isEmbedDetected) {
+                setIsEmbedDetected(true);
+                setIsManualMode(false);
+                toast.success("Page detected automatically!");
+            }
         }
-        if (!isEmbedDetected) {
-          setIsEmbedDetected(true);
-          setIsManualMode(false);
-          toast.success("Page detected automatically!");
-        }
-
-        const path = event.data.path || "/";
-        if (path !== currentPath) {
-          setCurrentPath(path);
-          if (onPathChange) onPathChange(path);
-        }
-        
-        // --- AUTO-RESYNC ON HANDSHAKE ---
-        // If we get a handshake, the iframe just (re)loaded. Send pins now!
-        setTimeout(() => {
-             console.log('[ReviewInterface] Triggering auto-sync on handshake...');
-             // We can't easily call the effect's logic here without refactoring, 
-             // but we can force a re-render or relies on state.
-             // Actually, simplest is to just duplicate the postMessage here for debugging.
-             // But displayedComments isn't in scope of this effect if we use the closure?
-             // Ah, this effect has `currentPath` dep.
-        }, 500);
       }
-      
+
+      // 5. Anchor Found
       if (event.data.type === "anchor-found") {
           console.log('[ReviewInterface] Anchor found:', event.data.anchor);
           pendingAnchorRef.current = event.data.anchor;
       }
     };
-
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [isEmbedDetected, currentPath, onPathChange]); // Removed dependencies that cause loop? No, setState is stable.
-
-  // Derived State: Feedback Inbox Logic
-  const pageSummary = comments.reduce((acc, c) => {
-    const path = c.pageUrl || "/";
-    if (!acc[path]) acc[path] = { path, pending: 0, resolved: 0 };
-    if (c.status === "OPEN") acc[path].pending++;
-    if (c.status === "RESOLVED") acc[path].resolved++;
-    return acc;
-  }, {} as Record<string, { path: string; pending: number; resolved: number }>);
-
-  // Split into "Action Needed" (Pending) and "Done" (Resolved Only)
-  const pagesWithPending = Object.values(pageSummary)
-    .filter((p) => p.pending > 0)
-    .sort((a, b) => b.pending - a.pending); // Sort desc by pending count
-
-  const pagesResolvedOnly = Object.values(pageSummary)
-    .filter((p) => p.pending === 0 && p.resolved > 0)
-    .sort((a, b) => a.path.localeCompare(b.path)); // Sort alpha
-
-  const totalActionPages = pagesWithPending.length;
-
-  // Update displayed comments
-  const displayedComments = comments
-    .filter((c) => c.status === filterStatus)
-    .filter((c) => c.pageUrl === currentPath) // Strict Scoping
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+  }, [currentPath, onPathChange, isEmbedDetected]);
 
   // --- Sync Pins to Iframe ---
   useEffect(() => {
-    if (iframeStatus !== "LOADED" || !iframeRef.current?.contentWindow) {
-        console.log('[ReviewInterface] Iframe not ready for pins:', iframeStatus);
-        return;
-    }
+    if (iframeStatus !== "LOADED" || !iframeRef.current?.contentWindow) return;
 
     const currentDocWidth = iframeDocumentWidth || iframeWidth || 1200;
 
     const pinsPayload = displayedComments.map((comment, index) => {
       let docX = comment.clickX;
-      
-      // Conversion Logic (same as before)
+      // Conversion Logic
       if (comment.clickX <= 1) {
          docX = comment.clickX * currentDocWidth;
       } else {
@@ -248,12 +246,12 @@ export default function ReviewInterface({
       return {
         id: comment.id,
         x: docX,
-        y: comment.clickY, // Y is always absolute
+        y: comment.clickY,
         status: comment.status,
         number: index + 1,
         message: comment.message,
         active: activeCommentId === comment.id,
-        anchor: comment.anchor // Pass anchor data to iframe
+        anchor: comment.anchor
       };
     });
 
@@ -261,35 +259,9 @@ export default function ReviewInterface({
     iframeRef.current.contentWindow.postMessage({
         type: 'render-pins',
         pins: pinsPayload
-    }, '*'); // In production, consider restricting targetOrigin
+    }, '*');
 
   }, [displayedComments, activeCommentId, iframeStatus, iframeDocumentWidth, iframeWidth, initialIframeWidths, project.id]);
-
-  // Navigation Helper
-  const handlePageClick = (path: string) => {
-    setCurrentPath(path);
-    if (onPathChange) onPathChange(path);
-
-    // If clicking a page with pending items, switch filter to OPEN to see them
-    const pageStats = pageSummary[path];
-    if (pageStats?.pending > 0) {
-      setFilterStatus("OPEN");
-    } else if (pageStats?.resolved > 0) {
-      setFilterStatus("RESOLVED");
-    }
-
-    // Close mobile menu on navigation
-    setIsMobileMenuOpen(false);
-
-    // Navigate Iframe
-    try {
-      const base = project.baseUrl.replace(/\/$/, "");
-      const target = path === "/" ? base : `${base}${path}`;
-      setIframeSrc(target);
-    } catch (e) {
-      console.error("Navigation error", e);
-    }
-  };
 
   // --- Interaction Handlers ---
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -545,8 +517,9 @@ export default function ReviewInterface({
         />
 
         <div className={styles.previewContainer}>
-          <iframe
-            ref={iframeRef}
+          <div className={styles.viewport}>
+            <iframe
+              ref={iframeRef}
             src={iframeSrc}
             className={styles.iframe}
             onLoad={() => {
@@ -654,6 +627,7 @@ export default function ReviewInterface({
           )}
 
 
+          </div>
         </div>
       </div>
 
