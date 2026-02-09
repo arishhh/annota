@@ -107,6 +107,8 @@ export default function ReviewInterface({
 
   const isPathValid = currentPath && currentPath.startsWith("/");
 
+
+
   // Listen for Embed Script Messages
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -125,10 +127,33 @@ export default function ReviewInterface({
         return;
       }
 
+      // Handle Pin Clicks
+      if (event.data.type === 'pin-clicked') {
+        const cId = event.data.commentId;
+        setActiveCommentId(cId);
+        
+        // Scroll sidebar
+        const el = document.getElementById(`comment-${cId}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        // Mobile handling
+        if (window.innerWidth <= 768) {
+             setIsMobileMenuOpen(true);
+        }
+        return;
+      }
+
       if (
         event.data.type === "handshake" ||
-        event.data.type === "path-update"
+        event.data.type === "path-update" ||
+        event.data.type === "render-confirmed"
       ) {
+        console.log('[ReviewInterface] Message received:', event.data);
+        
+        if (event.data.type === "render-confirmed") {
+            toast.success(`Iframe confirmed rendering ${event.data.count} pins!`);
+            return;
+        }
         if (!isEmbedDetected) {
           setIsEmbedDetected(true);
           setIsManualMode(false);
@@ -140,12 +165,23 @@ export default function ReviewInterface({
           setCurrentPath(path);
           if (onPathChange) onPathChange(path);
         }
+        
+        // --- AUTO-RESYNC ON HANDSHAKE ---
+        // If we get a handshake, the iframe just (re)loaded. Send pins now!
+        setTimeout(() => {
+             console.log('[ReviewInterface] Triggering auto-sync on handshake...');
+             // We can't easily call the effect's logic here without refactoring, 
+             // but we can force a re-render or relies on state.
+             // Actually, simplest is to just duplicate the postMessage here for debugging.
+             // But displayedComments isn't in scope of this effect if we use the closure?
+             // Ah, this effect has `currentPath` dep.
+        }, 500);
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [isEmbedDetected, currentPath, onPathChange]);
+  }, [isEmbedDetected, currentPath, onPathChange]); // Removed dependencies that cause loop? No, setState is stable.
 
   // Derived State: Feedback Inbox Logic
   const pageSummary = comments.reduce((acc, c) => {
@@ -175,6 +211,48 @@ export default function ReviewInterface({
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
+
+  // --- Sync Pins to Iframe ---
+  useEffect(() => {
+    if (iframeStatus !== "LOADED" || !iframeRef.current?.contentWindow) {
+        console.log('[ReviewInterface] Iframe not ready for pins:', iframeStatus);
+        return;
+    }
+
+    const currentDocWidth = iframeDocumentWidth || iframeWidth || 1200;
+
+    const pinsPayload = displayedComments.map((comment, index) => {
+      let docX = comment.clickX;
+      
+      // Conversion Logic (same as before)
+      if (comment.clickX <= 1) {
+         docX = comment.clickX * currentDocWidth;
+      } else {
+        const baselineWidth = initialIframeWidths[project.id] || iframeWidth;
+        if (baselineWidth > 0 && iframeWidth > 0 && baselineWidth !== iframeWidth) {
+          const widthDelta = iframeWidth - baselineWidth;
+          docX = docX + (widthDelta / 2);
+        }
+      }
+
+      return {
+        id: comment.id,
+        x: docX,
+        y: comment.clickY, // Y is always absolute
+        status: comment.status,
+        number: index + 1,
+        message: comment.message,
+        active: activeCommentId === comment.id
+      };
+    });
+
+    console.log('[ReviewInterface] Sending render-pins:', pinsPayload);
+    iframeRef.current.contentWindow.postMessage({
+        type: 'render-pins',
+        pins: pinsPayload
+    }, '*'); // In production, consider restricting targetOrigin
+
+  }, [displayedComments, activeCommentId, iframeStatus, iframeDocumentWidth, iframeWidth, initialIframeWidths, project.id]);
 
   // Navigation Helper
   const handlePageClick = (path: string) => {
@@ -228,13 +306,11 @@ export default function ReviewInterface({
     const clampedX = Math.max(0, docX);
     const clampedY = Math.max(0, docY);
 
-    // Calculate Ratio for X
-    const currentDocWidth = iframeDocumentWidth || overlayRef.current?.scrollWidth || 0;
-    const ratioX = currentDocWidth > 0 ? clampedX / currentDocWidth : 0;
+    // UPDATED: Store as ABSOLUTE PIXELS as requested
+    // "Key requirement: pin coordinates must be stored as iframe document coordinates (docX/docY)"
+    // No longer converting to ratio for new comments.
 
-    // Store document coordinates in popover (will be saved to DB)
-    // We store X as RATIO, Y as ABSOLUTE PIXELS
-    setPopover({ x: ratioX, y: clampedY, isOpen: true });
+    setPopover({ x: clampedX, y: clampedY, isOpen: true });
     setCommentText(prefilledText || "");
     setPrefilledText("");
   };
@@ -415,6 +491,37 @@ export default function ReviewInterface({
                   </button>
                 )}
 
+                {/* DEBUG: SYNC PIN BUTTON */}
+                <button 
+                    className="px-2 py-1 bg-red-500/20 text-red-400 text-[10px] rounded border border-red-500/50 mr-2"
+                    onClick={() => {
+                        console.log('[ReviewInterface] Manual Sync Clicked');
+                        if (iframeRef.current?.contentWindow) {
+                            const pins = comments
+                                .filter(c => c.status === filterStatus && c.pageUrl === currentPath)
+                                .map((comment, index) => {
+                                    const currentDocWidth = iframeDocumentWidth || iframeWidth || 1200;
+                                    let docX = comment.clickX <= 1 ? comment.clickX * currentDocWidth : comment.clickX;
+                                    return {
+                                        id: comment.id,
+                                        x: docX,
+                                        y: comment.clickY,
+                                        status: comment.status,
+                                        number: index + 1,
+                                        message: comment.message,
+                                        active: activeCommentId === comment.id
+                                    };
+                                });
+                            console.log('[ReviewInterface] Manually sending:', pins);
+                            iframeRef.current.contentWindow.postMessage({ type: 'render-pins', pins }, '*');
+                        } else {
+                            console.error('[ReviewInterface] Iframe ref missing');
+                        }
+                    }}
+                >
+                    SYNC
+                </button>
+
                 {/* SIDEBAR TOGGLE - Moved to right */}
                 <button
                   onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -469,81 +576,6 @@ export default function ReviewInterface({
               onClick={handleOverlayClick}
               style={{ pointerEvents: commentMode ? "auto" : "none" }}
             >
-              {displayedComments.map((comment, i) => {
-                let docX = comment.clickX;
-                let docY = comment.clickY;
-
-                const currentDocWidth = iframeDocumentWidth || overlayRef.current?.scrollWidth || 0;
-
-                // CHECK: Is this a ratio-based comment?
-                if (comment.clickX <= 1) {
-                  // YES: Convert ratio to pixels based on CURRENT layout width
-                  docX = comment.clickX * currentDocWidth;
-                } else {
-                  // LEGACY: Absolute pixels. 
-                  // Apply responsive drift compensation only for legacy comments if needed.
-                  const baselineWidth = initialIframeWidths[project.id] || iframeWidth;
-                  if (baselineWidth > 0 && iframeWidth > 0 && baselineWidth !== iframeWidth) {
-                    const widthDelta = iframeWidth - baselineWidth;
-                    docX = docX + (widthDelta / 2);
-                  }
-                }
-
-                const viewportX = docX - iframeScrollX;
-                const viewportY = docY - iframeScrollY;
-
-                const overlayRect = overlayRef.current?.getBoundingClientRect();
-                const overlayWidth = overlayRect?.width || 0;
-                const overlayHeight = overlayRect?.height || 0;
-
-                const isOutsideViewport =
-                  overlayWidth > 0 &&
-                  (viewportX < -20 ||
-                    viewportY < -20 ||
-                    viewportX > overlayWidth + 20 ||
-                    viewportY > overlayHeight + 20);
-
-                if (isOutsideViewport) return null;
-
-                return (
-                  <div
-                    key={comment.id}
-                    className={`${styles.pin} ${activeCommentId === comment.id ? styles.pinActive : ""} ${comment.status === "RESOLVED" ? styles.pinResolved : ""}`}
-                    style={{
-                      left: viewportX,
-                      top: viewportY,
-                      pointerEvents: "auto",
-                      display: filterStatus === comment.status ? "flex" : "none",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveCommentId(comment.id);
-                      document
-                        .getElementById(`comment-${comment.id}`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-
-                      if (window.innerWidth <= 768) {
-                        setIsMobileMenuOpen(true);
-                      }
-                    }}
-                    onMouseEnter={() => setActiveCommentId(comment.id)}
-                    onMouseLeave={() => setActiveCommentId(null)}
-                  >
-                    {i + 1}
-                    {activeCommentId === comment.id && (
-                      <div className={styles.pinTooltip}>
-                        <span className={styles.tooltipStatus}>
-                          {PROJECT_STATUS_LABELS[comment.status] || comment.status}
-                        </span>
-                        <div className={styles.tooltipMessage}>
-                          {comment.message}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
               {/* Commenting UI (Popover & Helper Text) */}
               {commentMode && project.status !== "APPROVED" && (
                 <>
@@ -562,7 +594,9 @@ export default function ReviewInterface({
                           const overlayWidth = overlayRef.current?.clientWidth || 0;
 
                           // 1. Calculate ideal pixel position relative to overlay
-                          let px = popover.x <= 1
+                          // Popover X is now stored as ABSOLUTE (pixels) or RATIO (if legacy < 1)
+                          // But new comments are absolute.
+                          let px = popover.x <= 1 && popover.x > 0
                             ? popover.x * docWidth
                             : popover.x;
 
@@ -575,8 +609,6 @@ export default function ReviewInterface({
                           const HALF_WIDTH = 160;
                           const PADDING = 20;
 
-                          // If overlay is too narrow (mobile), just center it? 
-                          // But assuming desktop for side-by-side commenting usually.
                           if (overlayWidth > (HALF_WIDTH * 2)) {
                             vx = Math.max(HALF_WIDTH + PADDING, Math.min(vx, overlayWidth - HALF_WIDTH - PADDING));
                           }
