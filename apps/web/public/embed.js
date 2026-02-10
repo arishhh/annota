@@ -329,35 +329,38 @@
             let newX, newY;
             let anchored = false;
 
-            // Try to anchor
+            // ALWAYS prefer semantic anchoring when anchor data exists
             if (pin.anchor && pin.anchor.selector) {
                 const anchorEl = document.querySelector(pin.anchor.selector);
                 if (anchorEl) {
                     const rect = anchorEl.getBoundingClientRect();
-                    // Basic bounds check to ensure element is visible/reasonable? 
+                    // Basic bounds check to ensure element is visible/reasonable
                     if (rect.width > 0 && rect.height > 0) {
                         const docTop = rect.top + window.scrollY;
                         const docLeft = rect.left + window.scrollX;
                         
-                        // Use Percentage if available, otherwise absolute offset (backward compat)
+                        // ALWAYS use percentage-based positioning for semantic anchoring
+                        // This ensures pins stay near the element, not pixel-perfect
                         if (pin.anchor.offsetXPct !== undefined) {
                             newX = docLeft + (rect.width * pin.anchor.offsetXPct);
                             newY = docTop + (rect.height * pin.anchor.offsetYPct);
-                        } else {
-                             // Fallback for old pins
-                            newX = docLeft + (pin.anchor.offsetX || 0);
-                            newY = docTop + (pin.anchor.offsetY || 0);
+                            anchored = true;
+                        } else if (pin.anchor.offsetX !== undefined) {
+                            // Legacy fallback for old pins without percentage
+                            newX = docLeft + pin.anchor.offsetX;
+                            newY = docTop + pin.anchor.offsetY;
+                            anchored = true;
                         }
-                        anchored = true;
                     }
                 }
             }
 
-            // Fallback to absolute doc coordinates if anchoring failed
+            // ONLY fallback to absolute coordinates if element not found
+            // This means the DOM structure changed significantly
             if (!anchored) {
                 newX = pin.x;
                 newY = pin.y;
-                // Maybe add visual indicator that pin is "detached"?
+                // Visual indicator that pin is "detached" from its anchor
                 el.style.opacity = '0.7'; 
             } else {
                 el.style.opacity = '1';
